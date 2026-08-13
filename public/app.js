@@ -14,6 +14,7 @@ let sel = null;              // index into the rack
 let riichiArmed = false;
 let kongOpen = false;
 let showLobby = true;
+let seatsOpen = false;
 let muted = localStorage.getItem('mj_muted') === '1';
 let buzz = localStorage.getItem('mj_buzz') !== '0';
 let seenBonus = 0;
@@ -73,6 +74,7 @@ function onSync(m) {
   const g = m.game;
   if (g && g.phase !== 'idle' && showLobby && prev?.game?.phase !== g.phase) showLobby = false;
   if (!g || g.phase === 'idle') showLobby = true;
+  if (seatsOpen && (!g || g.phase === 'idle' || m.you.seat !== null)) seatsOpen = false;
   if (g && g.seat !== null) {
     if (g.turn !== lastTurnSeat) { sel = null; kongOpen = false; riichiArmed = false; }
     const mine = g.phase === 'play' && g.turn === g.seat;
@@ -171,13 +173,14 @@ function render() {
   renderMine(g);
   renderTray(g);
   renderSheet(g);
+  renderSeats();
 }
 
 function renderRail(g) {
   if (!g || g.phase === 'idle') {
     $('rail').innerHTML = `<span class="round cjk">麻雀</span>
       <span class="eyebrow">${esc(sync.room.name)} · ${esc(sync.room.config.variantId)}</span>
-      <span class="meta">${railButtons()}</span>`;
+      <span class="meta">${railButtons(g)}</span>`;
     return;
   }
   $('rail').innerHTML = `
@@ -186,15 +189,35 @@ function renderRail(g) {
     <span class="meta">
       ${g.honba ? `<span class="eyebrow">本場 <b>${g.honba}</b></span>` : ''}
       ${g.riichiPot ? `<span class="eyebrow">pot <b>${g.riichiPot}</b></span>` : ''}
-      ${railButtons()}
+      ${railButtons(g)}
     </span>`;
 }
 
-function railButtons() {
-  return `<button class="mini" data-a="guide" title="How to play">?</button>
+function railButtons(g) {
+  const canJoin = g && g.phase !== 'idle' && sync.you.seat === null;
+  return `${canJoin ? `<button class="mini" data-a="seats" title="Take a bot's seat">seats</button>` : ''}
+    <button class="mini" data-a="guide" title="How to play">?</button>
     <button class="mini" data-a="mute" title="Sound">${muted ? '🔇' : '🔔'}</button>
     ${'vibrate' in navigator ? `<button class="mini ${buzz ? 'on' : ''}" data-a="buzz" title="Vibrate on your turn">buzz</button>` : ''}
     ${TABLE_VIEW ? `<button class="mini" data-a="full" title="Fullscreen">full</button>` : ''}`;
+}
+
+function renderSeats() {
+  const el = $('seats');
+  if (!el) return;
+  if (!seatsOpen || !sync) { el.innerHTML = ''; return; }
+  const r = sync.room;
+  const seatBtns = r.seats.map((s, i) => `
+    <button class="${s.name ? 'taken' : ''}" ${s.bot ? '' : 'disabled'} data-a="sit" data-seat="${i}">
+      <span class="wind cjk">${WINDS[i]}</span>
+      <span class="nm">${s.name ? esc(s.name) : 'open seat'}${s.bot ? ' — tap to take over' : ''}</span>
+    </button>`).join('');
+  el.innerHTML = `<div class="sheet-inner">
+    <h1>Take a seat</h1>
+    <div class="sub">Bot-controlled seats can be taken over mid-game.</div>
+    <div class="seatpick">${seatBtns}</div>
+    <div class="actions"><button class="ghost" data-a="closeseats">Close</button></div>
+  </div>`;
 }
 
 function renderTable(g) {
@@ -436,7 +459,6 @@ function resultSheet(g) {
 function lobbySheet() {
   const r = sync.room;
   const you = sync.you;
-  const host = you.host;
   const seatBtns = r.seats.map((s, i) => `
     <button class="${s.name ? 'taken' : ''} ${you.seat === i ? 'primary' : ''}" data-a="sit" data-seat="${i}">
       <span class="wind cjk">${WINDS[i]}</span>
@@ -444,13 +466,13 @@ function lobbySheet() {
     </button>`).join('');
 
   const variants = r.variants.map((v) => `
-    <button class="variant ${r.config.variantId === v.id ? 'on' : ''}" ${host ? '' : 'disabled'} data-a="variant" data-id="${v.id}">
+    <button class="variant ${r.config.variantId === v.id ? 'on' : ''}" data-a="variant" data-id="${v.id}">
       <div class="nm">${esc(v.name)}<span class="zh">${esc(v.zh)}</span></div>
       <div class="bl">${esc(v.blurb)}</div>
     </button>`).join('');
 
-  const rounds = [1, 2, 4].map((n) => `<button class="${r.config.rounds === n ? 'on' : ''}" ${host ? '' : 'disabled'} data-a="rounds" data-n="${n}">${n === 1 ? '1 round (東)' : n === 2 ? '2 rounds' : '4 rounds'}</button>`).join('');
-  const timers = [0, 10, 20, 45].map((n) => `<button class="${r.config.claimSeconds === n ? 'on' : ''}" ${host ? '' : 'disabled'} data-a="timer" data-n="${n}">${n === 0 ? 'no timer' : `${n}s`}</button>`).join('');
+  const rounds = [1, 2, 4].map((n) => `<button class="${r.config.rounds === n ? 'on' : ''}" data-a="rounds" data-n="${n}">${n === 1 ? '1 round (東)' : n === 2 ? '2 rounds' : '4 rounds'}</button>`).join('');
+  const timers = [0, 10, 20, 45].map((n) => `<button class="${r.config.claimSeconds === n ? 'on' : ''}" data-a="timer" data-n="${n}">${n === 0 ? 'no timer' : `${n}s`}</button>`).join('');
 
   const seatedNames = r.seats.filter((s) => s.name).length;
   const me = you.seat !== null ? r.seats[you.seat] : null;
@@ -468,12 +490,12 @@ function lobbySheet() {
     <h2>Seat</h2>
     <div class="seatpick">${seatBtns}</div>
 
-    <h2>Ruleset ${host ? '' : '<span class="eyebrow">host picks</span>'}</h2>
+    <h2>Ruleset</h2>
     <div class="variants">${variants}</div>
     <div class="optrow">${rounds}</div>
     <div class="optrow"><span class="eyebrow">claim timer</span>${timers}</div>
     <div class="optrow">
-      <button class="${r.config.bots ? 'on' : ''}" ${host ? '' : 'disabled'} data-a="bots">${r.config.bots ? 'bots fill empty seats' : 'humans only'}</button>
+      <button class="${r.config.bots ? 'on' : ''}" data-a="bots">${r.config.bots ? 'bots fill empty seats' : 'humans only'}</button>
       <button data-a="mute">${muted ? 'sound off' : 'sound on'}</button>
       ${'vibrate' in navigator ? `<button class="${buzz ? 'on' : ''}" data-a="buzz">${buzz ? 'vibrate on' : 'vibrate off'}</button>` : ''}
       <button data-a="guide">How to play</button>
@@ -486,7 +508,7 @@ function lobbySheet() {
 
     <div class="actions" style="justify-content:flex-start;margin-top:14px">
       ${you.seat !== null ? `<button class="${me?.ready ? '' : 'primary'}" data-a="ready" data-v="${me?.ready ? '0' : '1'}">${me?.ready ? 'Not ready' : "I'm ready"}</button>` : ''}
-      ${host ? `<button class="primary" data-a="start">Start the game</button>` : '<span class="eyebrow">waiting for the host to start</span>'}
+      <button class="primary" data-a="start">Start the game</button>
       ${sync.game && sync.game.phase !== 'idle' ? `<button class="ghost" data-a="peek">Back to the table</button>` : ''}
     </div>
   </div>`;
@@ -617,6 +639,8 @@ document.addEventListener('click', (e) => {
       render();
       break;
     case 'sit': send({ t: 'sit', seat: +b.dataset.seat }); break;
+    case 'seats': seatsOpen = true; renderSeats(); break;
+    case 'closeseats': seatsOpen = false; renderSeats(); break;
     case 'ready': send({ t: 'ready', v: b.dataset.v === '1' }); break;
     case 'variant': send({ t: 'config', variantId: b.dataset.id }); break;
     case 'rounds': send({ t: 'config', rounds: +b.dataset.n }); break;

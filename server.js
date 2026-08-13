@@ -114,7 +114,6 @@ class Room {
     this.name = name;
     this.players = new Map();   // token -> player
     this.seats = [null, null, null, null];
-    this.host = null;
     this.config = { ...DEFAULT_CONFIG };
     this.game = null;
     this.claimTimer = null;
@@ -133,7 +132,6 @@ class Room {
     }
     if (name) p.name = name.slice(0, 16);
     p.conns.add(conn);
-    if (!this.host || !this.players.get(this.host)) this.host = token;
     // reclaim a seat held by this token
     for (let s = 0; s < 4; s++) if (this.seats[s] === token) p.seat = s;
     return p;
@@ -172,7 +170,6 @@ class Room {
       t: 'sync',
       room: {
         name: this.name,
-        host: this.host === token,
         seats: this.seatView(),
         config: this.config,
         variants: VARIANT_LIST,
@@ -188,7 +185,7 @@ class Room {
           payment: v.scoring?.payment ?? null,
         },
       },
-      you: { token, name: p?.name, seat, host: this.host === token },
+      you: { token, name: p?.name, seat },
       game: this.game ? this.game.view(seat) : null,
     };
   }
@@ -320,7 +317,6 @@ function onConnection(conn, req) {
     if (!r || !token) return conn.send({ t: 'error', msg: 'say hello first' });
     const p = r.player(token);
     if (!p) return;
-    const isHost = r.host === token;
 
     switch (m.t) {
       case 'name':
@@ -329,9 +325,17 @@ function onConnection(conn, req) {
       case 'sit': {
         const s = Number(m.seat);
         if (!(s >= 0 && s < 4)) return;
-        if (r.game && r.game.phase !== 'idle') return conn.send({ t: 'error', msg: 'game in progress' });
-        if (r.seats[s] && r.seats[s] !== token) return conn.send({ t: 'error', msg: 'seat taken' });
+        const occupantToken = r.seats[s];
+        const occupant = occupantToken ? r.players.get(occupantToken) : null;
+        if (r.game && r.game.phase !== 'idle') {
+          // mid-game, only an empty-handed spectator can step into a bot's seat
+          if (p.seat !== null) return conn.send({ t: 'error', msg: 'you already have a seat' });
+          if (!occupant || !occupant.bot) return conn.send({ t: 'error', msg: 'game in progress' });
+        } else if (occupantToken && occupantToken !== token) {
+          return conn.send({ t: 'error', msg: 'seat taken' });
+        }
         if (p.seat !== null) r.seats[p.seat] = null;
+        if (occupant?.bot) r.players.delete(occupantToken);
         r.seats[s] = token;
         p.seat = s;
         break;
@@ -344,7 +348,6 @@ function onConnection(conn, req) {
         p.ready = !!m.v;
         break;
       case 'config': {
-        if (!isHost) return conn.send({ t: 'error', msg: 'only the host can change the table' });
         if (r.game && r.game.phase !== 'idle' && r.game.phase !== 'match-over') {
           return conn.send({ t: 'error', msg: 'finish the match first' });
         }
@@ -355,7 +358,6 @@ function onConnection(conn, req) {
         break;
       }
       case 'start': {
-        if (!isHost) return conn.send({ t: 'error', msg: 'only the host can start' });
         const seated = r.seats.map((t) => t && r.players.get(t)).filter(Boolean);
         if (!r.config.bots && seated.some((x) => !x.ready)) {
           return conn.send({ t: 'error', msg: 'everyone needs to be ready' });
@@ -383,7 +385,6 @@ function onConnection(conn, req) {
         break;
       }
       case 'restart': {
-        if (!isHost) return;
         for (const [t, pl] of [...r.players]) if (pl.bot) { r.players.delete(t); if (pl.seat !== null) r.seats[pl.seat] = null; }
         r.game = null;
         r.nextReady.clear();
