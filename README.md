@@ -33,8 +33,9 @@ this point works fully offline.
    ```
 
 3. Everyone opens that address in their phone browser. Type a name, pick a
-   seat, hit **Ready**. The first person in becomes the host and picks the
-   ruleset. Host presses **Start**.
+   seat, hit **Ready**. Anyone can pick the ruleset and press **Start** — there's
+   no host. If bots are filling empty seats, a spectator can tap **seats** during
+   the game to take one over.
 4. Optional: on the MacBook, open `http://localhost:8080/?view=table` and prop
    it up in the middle. It shows the river, melds and scores with no private
    info — a shared table surface.

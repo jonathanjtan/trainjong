@@ -53,7 +53,8 @@ function step(c) {
   if (!game || game.phase === 'idle') {
     if (you.seat === null) return send(c, { t: 'sit', seat: c.i });
     if (!room.seats[you.seat].ready) return send(c, { t: 'ready', v: true });
-    if (you.host) {
+    // anyone can drive the lobby now — let P1 do it so the harness doesn't send duplicates
+    if (c.i === 0) {
       if (room.config.variantId !== VARIANT) return send(c, { t: 'config', variantId: VARIANT, claimSeconds: 0 });
       if (room.seats.every((s) => s.ready)) return send(c, { t: 'start' });
     }
