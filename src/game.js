@@ -10,6 +10,16 @@ import { variant as getVariant } from './variants.js';
 const SCORERS = { hk: scoreHK, taiwan: scoreTaiwan, riichi: scoreRiichi };
 const next = (s) => (s + 1) % 4;
 
+// Claim priority: a win beats a pung/kong, which beats a chow.
+const WIN = 3, PUNG = 2, CHOW = 1, PASS = 0;
+const rankOf = (a) => (a.type === 'claimWin' ? WIN
+  : a.type === 'pung' || a.type === 'claimKong' ? PUNG
+    : a.type === 'chow' ? CHOW : PASS);
+/** the best a player could still declare, given what the tile offers them */
+const potentialRank = (o) => (o.win ? WIN
+  : o.pung || o.kong !== undefined ? PUNG
+    : o.chows?.length ? CHOW : PASS);
+
 export class Game {
   constructor({ variantId = 'hk-old', seed = Date.now(), rounds = 4, names = ['', '', '', ''] } = {}) {
     this.v = getVariant(variantId);
@@ -335,10 +345,13 @@ export class Game {
   }
 
   doClaim(seat, action) {
-    if (this.phase !== 'claim' || !this.claim) return { error: 'nothing to claim' };
+    // `stale` marks the losing side of a race rather than a mistake: the tile
+    // was settled between the snapshot this player tapped on and their message
+    // arriving. Nothing went wrong, so the room swallows these silently.
+    if (this.phase !== 'claim' || !this.claim) return { error: 'nothing to claim', stale: true };
     const opts = this.claim.options[seat];
-    if (!opts) return { error: 'no claim available' };
-    if (this.claim.responses[seat]) return { error: 'already responded' };
+    if (!opts) return { error: 'no claim available', stale: true };
+    if (this.claim.responses[seat]) return { error: 'already responded', stale: true };
     if (action.type === 'claimWin' && !opts.win) return { error: 'cannot win on that tile' };
     if (action.type === 'pung' && !opts.pung) return { error: 'cannot pung' };
     if (action.type === 'claimKong' && opts.kong === undefined) return { error: 'cannot kong' };
@@ -354,6 +367,17 @@ export class Game {
     }
     const pending = Object.keys(this.claim.options).filter((s) => !this.claim.responses[s]);
     if (!pending.length) return this.resolveClaims();
+    // Nobody still deciding can outrank what has already been claimed, so the
+    // tile is settled — resolve now instead of making the table wait on players
+    // whose only option has just been beaten. Their prompt disappears.
+    // A declared win still has to wait on any other seat that could also win,
+    // because two winners are separated by seat order, not by who tapped first.
+    const best = Math.max(...Object.values(this.claim.responses).map(rankOf));
+    const live = pending.some((s) => {
+      const p = potentialRank(this.claim.options[s]);
+      return best === WIN ? p >= WIN : p > best;
+    });
+    if (!live) return this.resolveClaims();
     return { ok: true };
   }
 

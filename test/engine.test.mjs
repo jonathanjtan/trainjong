@@ -276,5 +276,59 @@ test('added kong: the replacement draw goes to the declarer, not the next seat',
   }
 });
 
+test('claims: a pung settles the tile without waiting on a pending chow', () => {
+  // the chow player's prompt has been beaten, so the table must not sit there
+  // waiting for them to notice and tap Pass
+  const g = new Game({ variantId: 'hk-old', seed: 77, rounds: 1 });
+  g.startHand();
+  const from = g.turn;
+  const t = 4;                       // 5筒: pungable by one seat, chowable by the next
+  const punger = (from + 2) % 4;
+  const chower = (from + 1) % 4;
+  g.hands[punger] = [t, t, ...g.hands[punger]].slice(0, g.v.handSize);
+  g.hands[chower] = [t + 1, t + 2, ...g.hands[chower]].slice(0, g.v.handSize);
+  g.hands[from] = g.hands[from].filter((x) => x !== t);
+  g.hands[from].push(t);
+  g.drawn = t;
+
+  const r = g.doDiscard(from, t);
+  assert.ok(r.claims, 'the discard should open claims');
+  assert.strictEqual(g.phase, 'claim');
+  assert.ok(g.claim.options[punger]?.pung, 'the punger can pung');
+  assert.ok(g.claim.options[chower]?.chows?.length, 'the chower can chow');
+
+  g.doClaim(punger, { type: 'pung' });
+  assert.notStrictEqual(g.phase, 'claim', 'the pung should resolve the claim immediately');
+  assert.ok(g.melds[punger].some((m) => m.type === 'pung' && m.tile === t), 'the pung was taken');
+  assert.strictEqual(g.turn, punger, 'play continues from the claimer');
+});
+
+test('claims: a declared win still waits on another seat that could also win', () => {
+  // two ron claims are separated by seat order, not by who tapped first, so an
+  // early resolve here would hand the tile to the wrong player
+  const g = new Game({ variantId: 'hk-old', seed: 91, rounds: 1 });
+  g.startHand();
+  const from = g.turn;
+  const t = 4;
+  const near = (from + 1) % 4, far = (from + 2) % 4;
+  // both opponents can win on t; give them the same ready hand
+  const ready = [0, 0, 0, 1, 1, 1, 2, 2, 2, 9, 9, 9, t];
+  g.hands[near] = ready.slice();
+  g.hands[far] = ready.slice();
+  g.hands[from] = g.hands[from].filter((x) => x !== t);
+  g.hands[from].push(t);
+  g.drawn = t;
+
+  g.doDiscard(from, t);
+  assert.strictEqual(g.phase, 'claim');
+  const bothCanWin = g.claim.options[near]?.win && g.claim.options[far]?.win;
+  assert.ok(bothCanWin, 'both opponents should be able to win on the tile');
+
+  g.doClaim(far, { type: 'claimWin' });
+  assert.strictEqual(g.phase, 'claim', 'the far seat winning must not end it early');
+  g.doClaim(near, { type: 'claimWin' });
+  assert.strictEqual(g.result?.seat, near, 'the seat nearer the discarder takes the tile');
+});
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

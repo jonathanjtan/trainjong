@@ -18,7 +18,7 @@ let seatsOpen = false;
 let muted = localStorage.getItem('mj_muted') === '1';
 let buzz = localStorage.getItem('mj_buzz') !== '0';
 let seenBonus = 0;
-let lastTurnSeat = null, lastPhase = null, clockTimer = null;
+let lastTurnSeat = null, lastPhase = null, clockTimer = null, lastHandNo = null;
 
 if (TABLE_VIEW) document.body.classList.add('table-view');
 
@@ -63,7 +63,11 @@ function act(action) {
 }
 
 document.addEventListener('visibilitychange', () => {
-  if (!document.hidden && (!ws || ws.readyState > 1)) connect();
+  if (document.hidden) return;
+  if (!ws || ws.readyState > 1) connect();
+  // iOS suspends the audio context behind a lock screen; nudge it awake so the
+  // first cue after unlocking the phone is not the one that gets swallowed
+  if (audio && audio.state !== 'running') audio.resume?.().catch(() => { /* needs a tap */ });
 });
 window.addEventListener('online', () => { if (!ws || ws.readyState > 1) connect(); });
 
@@ -75,6 +79,8 @@ function onSync(m) {
   if (g && g.phase !== 'idle' && showLobby && prev?.game?.phase !== g.phase) showLobby = false;
   if (!g || g.phase === 'idle') showLobby = true;
   if (seatsOpen && (!g || g.phase === 'idle' || m.you.seat !== null)) seatsOpen = false;
+  // animation keys are scoped to a hand; drop them when a new one is dealt
+  if (g && g.handNo !== lastHandNo) { seenKeys.clear(); lastHandNo = g.handNo; }
   if (g && g.seat !== null) {
     if (g.turn !== lastTurnSeat) { sel = null; kongOpen = false; riichiArmed = false; }
     const mine = g.phase === 'play' && g.turn === g.seat;
@@ -123,22 +129,70 @@ function showBonus(tiles) {
 
 function haptic(pattern) {
   if (!buzz) return;
-  // Android fires this; iOS Safari has no vibration API, hence the sound too
+  // Android fires this; iOS Safari has no vibration API, hence the sound too.
+  // Chrome also needs the document to have been tapped at least once, which
+  // unlockAudio's listeners guarantee by the time any cue fires.
   try { navigator.vibrate?.(pattern); } catch { /* not supported */ }
 }
 
+/* Mobile audio is gesture-gated. Every cue we want to play (your turn, someone
+   discarded) originates in a WebSocket callback, which browsers do not count as
+   a user gesture — a context created there is born suspended and stays silent
+   forever. So the context is built and unlocked from real taps instead, and
+   every tap afterwards tops it back up, because iOS re-suspends on background. */
 let audio = null;
+let audioUnlocked = false;
+
+function unlockAudio() {
+  try {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    if (!audio) audio = new AC();
+    if (audio.state === 'suspended') audio.resume().catch(() => { /* not this tap */ });
+    if (!audioUnlocked) {
+      // iOS will not honour later scheduled sound until something has actually
+      // been played through the context from inside a gesture
+      const src = audio.createBufferSource();
+      src.buffer = audio.createBuffer(1, 1, 22050);
+      src.connect(audio.destination);
+      src.start(0);
+      audioUnlocked = true;
+    }
+  } catch { /* no audio, no problem */ }
+}
+
+// iOS routes Web Audio through the "ambient" session by default, which the
+// physical ringer switch silences. 16.4+ lets us ask for playback instead.
+try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch { /* older iOS */ }
+
+for (const ev of ['pointerdown', 'touchend', 'click', 'keydown']) {
+  window.addEventListener(ev, unlockAudio, { capture: true, passive: true });
+}
+
 function ping(freq) {
   if (muted) return;
+  if (!audio) { unlockAudio(); if (!audio) return; }
+  // coming back from a locked screen leaves the context suspended
+  if (audio.state !== 'running') audio.resume?.().catch(() => { /* stays quiet */ });
   try {
-    audio = audio || new (window.AudioContext || window.webkitAudioContext)();
-    const o = audio.createOscillator(), gn = audio.createGain();
-    o.frequency.value = freq; o.type = 'sine';
-    gn.gain.setValueAtTime(0.0001, audio.currentTime);
-    gn.gain.exponentialRampToValueAtTime(0.09, audio.currentTime + 0.02);
-    gn.gain.exponentialRampToValueAtTime(0.0001, audio.currentTime + 0.28);
-    o.connect(gn).connect(audio.destination);
-    o.start(); o.stop(audio.currentTime + 0.3);
+    const t = audio.currentTime;
+    const out = audio.createGain();
+    out.gain.value = 1;
+    out.connect(audio.destination);
+    // two notes, triangle wave — a lone quiet sine does not carry on a phone
+    const tone = (f, at, dur, peak) => {
+      const o = audio.createOscillator(), gn = audio.createGain();
+      o.type = 'triangle';
+      o.frequency.setValueAtTime(f, t + at);
+      gn.gain.setValueAtTime(0.0001, t + at);
+      gn.gain.exponentialRampToValueAtTime(peak, t + at + 0.015);
+      gn.gain.exponentialRampToValueAtTime(0.0001, t + at + dur);
+      o.connect(gn).connect(out);
+      o.start(t + at);
+      o.stop(t + at + dur + 0.02);
+    };
+    tone(freq, 0, 0.26, 0.22);
+    tone(freq * 1.5, 0.07, 0.22, 0.12);
   } catch { /* no audio, no problem */ }
 }
 
@@ -159,6 +213,16 @@ function dead(on) {
 }
 
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+// render() rebuilds the board from scratch on every sync, so a CSS animation
+// baked into the markup would replay on every tile several times a turn. Each
+// animated thing gets a key; only the first render that sees it animates.
+const seenKeys = new Set();
+function once(key) {
+  if (seenKeys.has(key)) return false;
+  seenKeys.add(key);
+  return true;
+}
 const seatName = (s) => sync?.room.seats[s]?.name || `Seat ${s + 1}`;
 const windOf = (seat, dealer) => (seat - dealer + 4) % 4;
 
@@ -254,14 +318,21 @@ function zone(g, seat, shape, me) {
   const s = sync.room.seats[seat];
   const side = shape === 'narrow';
   const isMe = seat === g.seat;
+  const newest = g.river[g.river.length - 1];
   const pond = g.river
     .filter((d) => d.seat === seat)
-    .map((d, i, arr) => tileEl(d.tile, {
-      dim: d.taken,
-      turned: !!d.riichi,
-      ring: i === arr.length - 1 && d === g.river[g.river.length - 1] && !d.taken,
-    })).join('');
-  const melds = g.melds[seat].map((m) => meldHTML(m, true)).join('')
+    .map((d, i, arr) => {
+      const isNewest = i === arr.length - 1 && d === newest;
+      return tileEl(d.tile, {
+        dim: d.taken,
+        turned: !!d.riichi,
+        ring: isNewest && !d.taken,
+        cls: isNewest && once(`d${g.handNo}:${g.river.length}`) ? 'fresh-discard' : '',
+      });
+    }).join('');
+  const melds = g.melds[seat].map((m, i) => meldHTML(m, true,
+    once(`m${g.handNo}:${seat}:${i}:${m.type}:${m.tile}`) ? 'fresh-meld' : ''))
+    .join('')
     + g.bonus[seat].map((t) => tileEl(t)).join('');
 
   return `<div class="zone ${side ? 'side' : ''}">
@@ -281,7 +352,7 @@ function zone(g, seat, shape, me) {
   </div>`;
 }
 
-function meldHTML(m, compact = false) {
+function meldHTML(m, compact = false, extra = '') {
   const ts = m.type === 'chow' ? [m.tile, m.tile + 1, m.tile + 2]
     : m.type === 'kong' ? [m.tile, m.tile, m.tile, m.tile]
       : [m.tile, m.tile, m.tile];
@@ -289,7 +360,7 @@ function meldHTML(m, compact = false) {
     size: compact ? 'zone' : 'xs',
     back: m.type === 'kong' && !m.open && (i === 0 || i === 3),
   })).join('');
-  return `<span class="meld ${m.open ? '' : 'closed'}">${inner}</span>`;
+  return `<span class="meld ${m.open ? '' : 'closed'} ${extra}">${inner}</span>`;
 }
 
 function renderMine(g) {
@@ -314,9 +385,10 @@ function renderMine(g) {
     return tileEl(t, { size: 'md', dim: myTurn && !ok }).replace('class="tile',
       `data-i="${i}" class="tile ${on ? 'sel' : ''} ${ok ? 'pick' : ''}`);
   }).join('');
+  const freshDraw = drawnIdx >= 0 && once(`w${g.handNo}:${g.river.length}:${g.drawn}`) ? 'fresh-draw' : '';
   const drawnTile = drawnIdx >= 0
     ? tileEl(g.drawn, { size: 'md', dim: myTurn && !canPick(g.drawn) }).replace('class="tile',
-      `data-i="${hand.length}" class="tile drawn ${sel === hand.length ? 'sel' : ''} ${canPick(g.drawn) ? 'pick' : ''}`)
+      `data-i="${hand.length}" class="tile drawn ${freshDraw} ${sel === hand.length ? 'sel' : ''} ${canPick(g.drawn) ? 'pick' : ''}`)
     : '';
 
   const myMelds = g.melds[g.seat].map((m) => meldHTML(m, true)).join('');
@@ -347,8 +419,15 @@ function renderMine(g) {
   }
   if (g.phase === 'hand-over') actions.push(`<button class="primary" data-a="next">Next hand</button>`);
 
+  // --rowslots drives the two-row rack on portrait phones. It counts only the
+  // concealed tiles, because melds and flowers wrap to their own line there —
+  // charging the rack for them would strand a tile on a third row. A short rack
+  // (post-melds) stays on one line, where it is already comfortably large.
+  const rackCount = hand.length + (drawnIdx >= 0 ? 1 : 0);
+  const rowslots = rackCount > 9 ? Math.ceil(rackCount / 2) : rackCount;
+
   $('mine').innerHTML = `
-    <div class="handrow" style="--slots:${slots}">
+    <div class="handrow" style="--slots:${slots};--rowslots:${rowslots}">
       <div class="rack">${rack}${drawnTile}</div>
       ${myMelds || myBonus ? `<div class="handmelds">${myMelds}${myBonus ? `<span class="bonusgroup">${myBonus}</span>` : ''}</div>` : ''}
     </div>
@@ -429,9 +508,10 @@ function resultSheet(g) {
     : `<div class="title-mark">流局</div><h1>Wall exhausted</h1>
        <div class="sub">${r.tenpai.length ? `Ready: ${r.tenpai.map(seatName).map(esc).join(', ')}` : 'Nobody was ready'}</div>`;
 
+  // note the arrow: map() passes the index too, which would land in `compact`
   const hand = r.kind === 'win'
     ? `<div class="result-hand">${r.hand.map((t) => tileEl(t, { size: 'sm', ring: t === r.winTile })).join('')}
-       ${r.melds.map(meldHTML).join('')}${r.bonus.map((t) => tileEl(t, { size: 'xs' })).join('')}</div>`
+       ${r.melds.map((m) => meldHTML(m)).join('')}${r.bonus.map((t) => tileEl(t, { size: 'sm' })).join('')}</div>`
     : '';
 
   const pats = r.kind === 'win' && r.patterns?.length
@@ -636,6 +716,9 @@ document.addEventListener('click', (e) => {
     case 'mute':
       muted = !muted;
       localStorage.setItem('mj_muted', muted ? '1' : '0');
+      // this tap is a gesture, so it can unlock as well as confirm — without a
+      // test note there is no way to tell "sound on" from "sound broken"
+      if (!muted) { unlockAudio(); ping(760); }
       render();
       break;
     case 'sit': send({ t: 'sit', seat: +b.dataset.seat }); break;
