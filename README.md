@@ -66,11 +66,15 @@ Port taken? `node server.js 9000` or `PORT=9000 node server.js`.
 - **The table is drawn as a table.** Discards pool in the middle in four blocks,
   and every tile a player owns — their discards, their concealed wall, their
   melds — is turned to face that player, the way it sits on a real table (and
-  the way Mahjong Soul and friends draw it). Six discards to a row, three rows,
-  and the slab in the middle exactly as wide as a row — the reference's ratio.
-  The slab carries the round, the wall count and the four scores, each score
-  turned towards its own seat, with the seat to play lit. Names stay upright in
-  the corners.
+  the way Mahjong Soul and friends draw it). Six discards to a row, three rows.
+  The slab in the middle carries the round, the wall count and the four scores,
+  each score turned towards its own seat, with the seat to play lit; it floats
+  inside the ring the ponds make rather than filling it, so the middle stays out
+  of the way of the tiles.
+- **Names float off the table**, in the felt the table does not use — the
+  gutters either side in landscape, the bands above and below in portrait. They
+  stay upright there, and it gives each seat's wall and melds back the corner
+  they used to have to squeeze around.
 - **It lies back in landscape**, again like the reference. That is not just
   decoration: a flat square table can only ever be as big as the short edge of
   the screen, and landscape has width going spare. Tilting it trades that
@@ -79,7 +83,10 @@ Port taken? `node server.js 9000` or `PORT=9000 node server.js`.
   is, so portrait, which has none, stays flat and top-down.
 - **`simple` in the top bar** flattens all that back to the older layout: every
   seat upright, ponds beside their player rather than pooled. It sticks per
-  browser, so one player can use it without affecting the table.
+  browser, so one player can use it without affecting the table. What sets the
+  tile size there is the *melds*, not the discards — a seat with three of them
+  wraps to three rows and the whole table shrinks to pay for it — so they are
+  drawn smaller than the discards and the tile count rides in the name plate.
 - **Landscape works**, and so does a zoomed-in laptop: the layout is sized from
   the viewport, so the table and your hand always fit without scrolling. The
   table is square and sized to the shorter edge, so on a wide screen it sits
@@ -145,7 +152,10 @@ stops shrinking and spills into the corner plates, in landscape only.
 
 The ponds are a fixed number of rows so the bands stay the same size all hand;
 `pondRows()` predicts what flex wrap will do (a sideways riichi tile is 1.4
-columns wide) and must never under-reserve.
+columns wide) and must never under-reserve. It reads `POND_COLS`, and the
+renderer hands that same number to the stylesheet as `--cols` — deliberately,
+because when the two were written down separately they drifted, and a pond that
+wrapped to four rows was given three.
 
 `jonathanjtan/trainjong` was empty at build time; when it grows code, a new
 variant is a data object in `src/variants.js` plus one scorer function.
