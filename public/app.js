@@ -20,21 +20,40 @@ let muted = localStorage.getItem('mj_muted') === '1';
 let buzz = localStorage.getItem('mj_buzz') !== '0';
 // the rotated-band table is the default; this falls back to the flat one
 let simpleLayout = localStorage.getItem('mj_simple') === '1';
-let seenBonus = 0;
+let seenBonus = 0, bonusPrimed = false;
 let lastTurnSeat = null, lastPhase = null, clockTimer = null, lastHandNo = null;
+// the claim clock is kept on our own monotonic clock, not the server's wall
+// time — four phones on a train share a router, not an NTP server
+let claimEndsAt = null;
 
 if (TABLE_VIEW) document.body.classList.add('table-view');
 
 // ---------------------------------------------------------------- transport
 
+/* Coming back from a locked phone can start two connections at once: the close
+   event schedules a retry, and the visibility handler opens one immediately.
+   Both sockets then talk to the room quite happily — but when the loser finally
+   dies, its close event used to raise the "lost the table" curtain over a
+   perfectly live connection, and render() bails out behind that curtain. So
+   every socket carries a generation, and a stale one is allowed to die quietly. */
+let wsGen = 0;
+let reconnectTimer = null;
+
 function connect() {
+  clearTimeout(reconnectTimer);
+  reconnectTimer = null;
+  if (ws) { try { ws.close(); } catch { /* already gone */ } }
+  const gen = ++wsGen;
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-  ws = new WebSocket(`${proto}://${location.host}/ws?room=${encodeURIComponent(ROOM)}`);
-  ws.onopen = () => {
+  const sock = new WebSocket(`${proto}://${location.host}/ws?room=${encodeURIComponent(ROOM)}`);
+  ws = sock;
+  sock.onopen = () => {
+    if (gen !== wsGen) { try { sock.close(); } catch { /* already gone */ } return; }
     live = true; backoff = 400; dead(false);
     send({ t: 'hello', token, name: myName, room: ROOM });
   };
-  ws.onmessage = (e) => {
+  sock.onmessage = (e) => {
+    if (gen !== wsGen) return;
     let m; try { m = JSON.parse(e.data); } catch { return; }
     if (m.t === 'welcome') {
       token = m.token; myName = m.name;
@@ -45,12 +64,13 @@ function connect() {
     if (m.t === 'sync') { onSync(m); return; }
     if (m.t === 'error') toast(m.msg);
   };
-  ws.onclose = () => {
+  sock.onclose = () => {
+    if (gen !== wsGen) return;          // superseded: someone else owns the table now
     live = false; dead(true);
     backoff = Math.min(4000, backoff * 1.7);
-    setTimeout(connect, backoff);
+    reconnectTimer = setTimeout(connect, backoff);
   };
-  ws.onerror = () => { try { ws.close(); } catch { /* ignore */ } };
+  sock.onerror = () => { try { sock.close(); } catch { /* ignore */ } };
 }
 
 function send(o) {
@@ -67,12 +87,17 @@ function act(action) {
 
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) return;
+  // a phone that has been away long enough for the server's heartbeat to cull it
+  // still shows readyState OPEN until the FIN lands, so don't trust that alone:
+  // say hello again and let the fresh snapshot correct whatever we drifted into
+  backoff = 400;
   if (!ws || ws.readyState > 1) connect();
+  else send({ t: 'hello', token, name: myName, room: ROOM });
   // iOS suspends the audio context behind a lock screen; nudge it awake so the
   // first cue after unlocking the phone is not the one that gets swallowed
   if (audio && audio.state !== 'running') audio.resume?.().catch(() => { /* needs a tap */ });
 });
-window.addEventListener('online', () => { if (!ws || ws.readyState > 1) connect(); });
+window.addEventListener('online', () => { backoff = 400; if (!ws || ws.readyState > 1) connect(); });
 
 function onSync(m) {
   const prev = sync;
@@ -82,8 +107,14 @@ function onSync(m) {
   if (g && g.phase !== 'idle' && showLobby && prev?.game?.phase !== g.phase) showLobby = false;
   if (!g || g.phase === 'idle') showLobby = true;
   if (seatsOpen && (!g || g.phase === 'idle' || m.you.seat !== null)) seatsOpen = false;
-  // animation keys are scoped to a hand; drop them when a new one is dealt
-  if (g && g.handNo !== lastHandNo) { seenKeys.clear(); lastHandNo = g.handNo; }
+  claimEndsAt = m.room.claimMs == null ? null : performance.now() + m.room.claimMs;
+  // animation keys are scoped to a hand; drop them when a new one is dealt, and
+  // so are the cue edges — a dealer who repeats starts the new hand on the seat
+  // they ended the last one on, and used to get no cue at all for it
+  if (g && g.handNo !== lastHandNo) {
+    seenKeys.clear(); lastHandNo = g.handNo;
+    lastTurnSeat = null; lastPhase = null;
+  }
   if (g && g.seat !== null) {
     if (g.turn !== lastTurnSeat) { sel = null; kongOpen = false; riichiArmed = false; }
     const mine = g.phase === 'play' && g.turn === g.seat;
@@ -102,14 +133,21 @@ function onSync(m) {
 // Flowers are replaced automatically by the rules, but they should never appear
 // silently — show the player exactly what they picked up.
 function checkBonus(g) {
-  if (!g || g.seat === null || g.seat === undefined) { seenBonus = 0; return; }
+  if (!g || g.seat === null || g.seat === undefined) { seenBonus = 0; bonusPrimed = false; return; }
   const evs = (g.bonusEvents || []).filter((e) => e.seat === g.seat);
-  if (!evs.length) { seenBonus = 0; return; }
-  const latest = evs[evs.length - 1].n;
-  if (!seenBonus) { seenBonus = latest; return; }   // joined mid-hand: don't replay
+  // joined mid-hand: catch up to whatever is already on the table, don't replay
+  if (!bonusPrimed) {
+    bonusPrimed = true;
+    if (evs.length) seenBonus = evs[evs.length - 1].n;
+    return;
+  }
+  // the event counter runs across the whole match, but each new hand starts with
+  // an empty list — an empty list is not a reason to forget where we were, or
+  // the first flower of every hand goes by in silence
+  if (!evs.length) return;
   const fresh = evs.filter((e) => e.n > seenBonus);
   if (!fresh.length) return;
-  seenBonus = latest;
+  seenBonus = evs[evs.length - 1].n;
   showBonus(fresh.map((e) => e.tile));
   ping(990);
   haptic([20, 40, 20]);
@@ -789,9 +827,8 @@ function renderTray(g) {
 function tickClock() {
   const c = $('clock');
   if (!c) return;
-  const dl = sync?.room.claimDeadline;
-  if (!dl) { c.textContent = ''; return; }
-  const left = Math.max(0, dl - Date.now());
+  if (claimEndsAt === null) { c.textContent = ''; return; }
+  const left = Math.max(0, claimEndsAt - performance.now());
   c.textContent = left > 0 ? `${Math.ceil(left / 1000)}s` : '';
 }
 

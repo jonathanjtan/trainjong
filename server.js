@@ -118,6 +118,7 @@ class Room {
     this.game = null;
     this.claimTimer = null;
     this.claimDeadline = null;
+    this.claimRef = null;
     this.botTimer = null;
     this.nextReady = new Set();
   }
@@ -175,7 +176,9 @@ class Room {
         variants: VARIANT_LIST,
         started: !!this.game && this.game.phase !== 'idle',
         watching: this.players.size - this.seats.filter(Boolean).length,
-        claimDeadline: this.claimDeadline,
+        // sent as time remaining, not as an instant: every phone at the table
+        // has its own idea of what Date.now() means
+        claimMs: this.claimDeadline === null ? null : Math.max(0, this.claimDeadline - Date.now()),
         scoringInfo: {
           unit: v.scorer === 'riichi' ? 'points' : v.scorer === 'taiwan' ? '底/台' : 'faan',
           minFaan: v.scoring?.minFaan ?? null,
@@ -206,6 +209,10 @@ class Room {
     clearTimeout(this.claimTimer);
     this.claimTimer = null;
     if (g && g.phase === 'claim' && this.config.claimSeconds > 0) {
+      // a different claim object is a different discard, and only that starts a
+      // fresh countdown — answering a claim already on the table must not push
+      // everyone else's clock back to the top
+      if (this.claimRef !== g.claim) { this.claimRef = g.claim; this.claimDeadline = null; }
       const humans = Object.keys(g.claim.options)
         .filter((s) => !g.claim.responses[s])
         .some((s) => { const p = this.occupant(+s); return p && !p.bot; });
@@ -220,6 +227,7 @@ class Room {
         }, Math.max(250, this.claimDeadline - Date.now()));
       } else this.claimDeadline = null;
     } else {
+      this.claimRef = null;
       this.claimDeadline = null;
     }
     this.scheduleBots();
@@ -372,7 +380,6 @@ function onConnection(conn, req) {
         // a claim that lost the race is not the player's mistake — their prompt
         // is about to vanish on its own, so don't shout at them about it
         if (res?.error && !res.stale) conn.send({ t: 'error', msg: res.error });
-        if (r.game.phase === 'claim') r.claimDeadline = null;
         break;
       }
       case 'next': {
