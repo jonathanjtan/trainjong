@@ -625,9 +625,34 @@ body.claiming .mine .hint { display: none; }
   .zone { overflow: visible; }
   .zone.side { max-width: none; }
   .zline { flex-direction: row; align-items: center; gap: 7px; }
-  /* the plate reads left-to-right again out here — there is width for it */
-  .zone.side .plate { flex-flow: row nowrap; padding: 2px 7px; gap: 4px; }
-  .zone.side .plate .who { font-size: 10px; max-width: 62px; }
+
+  /* Side plates turn to face their own seat, like nameplates on a real table.
+     writing-mode rather than transform: rotate() leaves the original box in
+     the layout, so a rotated plate would still reserve its full width and
+     shove the pond sideways. Vertical writing actually re-flows the box.
+     Left seat faces the centre, so its text runs top-to-bottom; the right
+     seat faces the other way, so 180deg flips it to read bottom-to-top. */
+  .zone.side .plate {
+    writing-mode: vertical-rl;
+    text-orientation: sideways;
+    flex-flow: row nowrap;
+    padding: 7px 3px;
+    gap: 4px;
+    /* sits at the head of its pond rather than centred: a turned plate is tall
+       enough that a centred one reaches into the floating call buttons */
+    align-self: flex-start;
+    /* Turned, the plate's length becomes height — and unlike the tiles it does
+       not scale, so a long name next to a six-figure riichi score would steal
+       the middle row and make fitTable() shrink the ponds to pay for it. Bound
+       it; overflow trims the trailing chips, never the wind or the score. */
+    max-height: 132px;
+    overflow: hidden;
+  }
+  .z-right .plate { transform: rotate(180deg); }
+  /* the name is clipped along the inline axis, which is now vertical */
+  .zone.side .plate .who { font-size: 10px; max-width: none; max-height: 52px; }
+  .zone.side .plate .score { font-size: 10px; }
+  .zone.side .plate .chip { font-size: 7px; padding: 0 3px; }
   .plate { padding: 2px 7px; gap: 4px; }
   .plate .who { font-size: 10px; max-width: 70px; }
   .plate .wind { font-size: 12px; }
@@ -642,10 +667,12 @@ body.claiming .mine .hint { display: none; }
   .backs { display: flex; gap: 1px; opacity: 0.9; flex: 0 0 auto; justify-content: center; }
   .backs .tile { width: calc(var(--dw) * 0.52); filter: none; }
   .zone { gap: 2px; }
-  /* the two side zones mirror each other around the middle. The bottom keeps
-     its plate on the LEFT so the lower-right corner stays clear for the
-     floating call buttons — that corner is the only place they can live. */
-  .z-right .zline { flex-direction: row-reverse; }
+  /* Both side plates sit on the INNER edge, flanking the centre, with their
+     ponds outboard. Mirrored, and it keeps the turned plates away from the
+     lower-right corner, which is the only place the call buttons can live.
+     The bottom plate stays left for the same reason. */
+  .z-left .zline { flex-direction: row-reverse; }
+  .z-right .zline { flex-direction: row; }
 
   .hub { padding: 4px 10px; min-width: 0; gap: 1px; flex-direction: row; align-items: center; }
   .hub.compact { max-width: 160px; }
