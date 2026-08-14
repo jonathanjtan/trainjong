@@ -15,6 +15,7 @@ let riichiArmed = false;
 let kongOpen = false;
 let showLobby = true;
 let seatsOpen = false;
+let showLastHand = false;
 let muted = localStorage.getItem('mj_muted') === '1';
 let buzz = localStorage.getItem('mj_buzz') !== '0';
 let seenBonus = 0;
@@ -85,8 +86,10 @@ function onSync(m) {
     if (g.turn !== lastTurnSeat) { sel = null; kongOpen = false; riichiArmed = false; }
     const mine = g.phase === 'play' && g.turn === g.seat;
     const claim = g.phase === 'claim' && (g.legal?.win || g.legal?.pung || g.legal?.chows || g.legal?.kong !== undefined);
-    if (mine && lastTurnSeat !== g.turn) { ping(660); haptic(45); }
-    if (claim && lastPhase !== 'claim') { ping(880); haptic([30, 60, 30]); }
+    // Vibration has no intensity control — length and repetition are the only
+    // levers, so both cues use a pattern rather than one short buzz.
+    if (mine && lastTurnSeat !== g.turn) { ping(720); haptic([90, 70, 90]); }
+    if (claim && lastPhase !== 'claim') { ping(880, { urgent: true }); haptic([130, 70, 130, 70, 220]); }
     lastTurnSeat = g.turn;
     lastPhase = g.phase;
   }
@@ -169,30 +172,55 @@ for (const ev of ['pointerdown', 'touchend', 'click', 'keydown']) {
   window.addEventListener(ev, unlockAudio, { capture: true, passive: true });
 }
 
-function ping(freq) {
+/* A phone speaker has almost no bass and very little headroom, so "louder"
+   comes from compression and from putting the energy up where the speaker is
+   efficient (roughly 1–3 kHz) — not from turning one quiet sine up until it
+   clips. Everything runs through a limiter so the peaks can be driven hard. */
+let master = null;
+function audioOut() {
+  if (master) return master;
+  const comp = audio.createDynamicsCompressor();
+  comp.threshold.value = -14;
+  comp.knee.value = 10;
+  comp.ratio.value = 12;
+  comp.attack.value = 0.002;
+  comp.release.value = 0.14;
+  master = audio.createGain();
+  master.gain.value = 2.4;
+  master.connect(comp).connect(audio.destination);
+  return master;
+}
+
+function ping(freq, { urgent = false } = {}) {
   if (muted) return;
   if (!audio) { unlockAudio(); if (!audio) return; }
   // coming back from a locked screen leaves the context suspended
   if (audio.state !== 'running') audio.resume?.().catch(() => { /* stays quiet */ });
   try {
     const t = audio.currentTime;
-    const out = audio.createGain();
-    out.gain.value = 1;
-    out.connect(audio.destination);
-    // two notes, triangle wave — a lone quiet sine does not carry on a phone
-    const tone = (f, at, dur, peak) => {
+    const out = audioOut();
+    const tone = (f, at, dur, peak, type = 'triangle') => {
       const o = audio.createOscillator(), gn = audio.createGain();
-      o.type = 'triangle';
+      o.type = type;
       o.frequency.setValueAtTime(f, t + at);
       gn.gain.setValueAtTime(0.0001, t + at);
-      gn.gain.exponentialRampToValueAtTime(peak, t + at + 0.015);
+      gn.gain.exponentialRampToValueAtTime(peak, t + at + 0.012);
       gn.gain.exponentialRampToValueAtTime(0.0001, t + at + dur);
       o.connect(gn).connect(out);
       o.start(t + at);
       o.stop(t + at + dur + 0.02);
     };
-    tone(freq, 0, 0.26, 0.22);
-    tone(freq * 1.5, 0.07, 0.22, 0.12);
+    // fundamental plus a fifth and an octave: the harmonics are what actually
+    // gets through a tiny speaker, and they make the cue read as louder
+    tone(freq, 0, 0.3, 0.5);
+    tone(freq * 1.5, 0.05, 0.26, 0.32);
+    tone(freq * 2, 0.02, 0.2, 0.2, 'square');
+    // a claim is time-limited, so it gets a second, higher strike to stand out
+    if (urgent) {
+      tone(freq * 1.34, 0.2, 0.3, 0.5);
+      tone(freq * 2, 0.24, 0.26, 0.3);
+      tone(freq * 2.68, 0.22, 0.2, 0.16, 'square');
+    }
   } catch { /* no audio, no problem */ }
 }
 
@@ -238,6 +266,9 @@ function render() {
   renderTray(g);
   renderSheet(g);
   renderSeats();
+  // last: the footer above sets the hand's height, which is what decides how
+  // much room the table actually has to fit into
+  fitTable();
 }
 
 function renderRail(g) {
@@ -247,9 +278,12 @@ function renderRail(g) {
       <span class="meta">${railButtons(g)}</span>`;
     return;
   }
+  // the round wind and the wall count live up here rather than in the middle of
+  // the table — the hub was the tallest thing competing with the ponds for room
   $('rail').innerHTML = `
     <span class="round cjk">${WINDS[g.roundWind]}</span>
-    <span class="eyebrow">${WIND_EN[g.roundWind]} round · hand ${g.handNo}</span>
+    <span class="eyebrow">${WIND_EN[g.roundWind]} · hand ${g.handNo}</span>
+    <span class="wallcount"><b>${g.wall}</b> left</span>
     <span class="meta">
       ${g.honba ? `<span class="eyebrow">本場 <b>${g.honba}</b></span>` : ''}
       ${g.riichiPot ? `<span class="eyebrow">pot <b>${g.riichiPot}</b></span>` : ''}
@@ -301,9 +335,7 @@ function renderTable(g) {
     <div class="z-top">${zone(g, at.top, 'wide', me)}</div>
     <div class="z-left">${zone(g, at.left, 'narrow', me)}</div>
     <div class="z-hub hubwrap">
-      <div class="hub">
-        <div class="rw cjk">${WINDS[g.roundWind]}</div>
-        <div class="wall">${g.wall} <span>left</span></div>
+      <div class="hub compact">
         ${g.doraIndicators?.length ? `<div class="dora">${g.doraIndicators.map((t) => tileEl(t)).join('')}</div>` : ''}
         <div class="last">${esc(g.log[g.log.length - 1]?.msg || '')}</div>
       </div>
@@ -312,6 +344,61 @@ function renderTable(g) {
     <div class="z-right">${zone(g, at.right, 'narrow', me)}</div>
     <div class="z-bottom">${zone(g, at.bottom, 'wide', me)}</div>
   </div>`;
+}
+
+/* The table's grid rows are `auto`, so they grow with the ponds while the table
+   box itself is capped by the flex layout. Late in a hand — 18 discards each
+   plus melds — the rows outgrow the box: the middle row collapses, the hub gets
+   painted over by the bottom pond, and the last rows fall off the bottom edge.
+   CSS cannot size tiles from "how many rows the content happens to need", so
+   measure what the rows want and shrink --dw until they fit. */
+const MIN_DW = 10;
+
+function tableNeed(table) {
+  const h = (sel) => { const el = table.querySelector(sel); return el ? el.getBoundingClientRect().height : 0; };
+  // the middle grid row is as tall as the tallest of its three cells
+  const middle = Math.max(h('.z-left'), h('.z-right'), h('.z-hub'));
+  const cs = getComputedStyle(table);
+  return h('.z-top') + middle + h('.z-bottom') + (parseFloat(cs.rowGap) || 0) * 2;
+}
+
+function fitTable() {
+  const table = $('board')?.querySelector('.table');
+  if (!table) return;
+  table.style.removeProperty('--dw');          // start from the CSS ideal each time
+  const cs = getComputedStyle(table);
+  const avail = table.clientHeight - (parseFloat(cs.paddingTop) || 0) - (parseFloat(cs.paddingBottom) || 0);
+  if (avail <= 0) return;
+  if (tableNeed(table) <= avail) return;        // the common case: no work to do
+
+  // --dw computes to an unresolved clamp() token, so read the ideal size off a
+  // real tile. No tiles yet means nothing that can overflow.
+  const probe = table.querySelector('.pond .tile:not(.turned)') || table.querySelector('.zmelds .tile');
+  const ideal = probe ? probe.getBoundingClientRect().width : 0;
+  if (!(ideal > MIN_DW)) return;
+
+  // Bisect for the largest tile that still fits. Height is monotonic in tile
+  // size, so this always lands on a fitting value — unlike stepping by the
+  // overflow ratio, which under-corrects (plates and gaps do not scale) and
+  // then has to give up at the floor.
+  let lo = MIN_DW, hi = ideal, best = MIN_DW;
+  for (let i = 0; i < 7 && hi - lo > 0.4; i++) {
+    const mid = (lo + hi) / 2;
+    table.style.setProperty('--dw', `${mid.toFixed(1)}px`);
+    if (tableNeed(table) <= avail) { best = mid; lo = mid; } else hi = mid;
+  }
+  table.style.setProperty('--dw', `${best.toFixed(1)}px`);
+}
+
+// the fit depends on viewport height, which changes when phone chrome slides
+// away or the device rotates
+let fitPending = false;
+for (const ev of ['resize', 'orientationchange']) {
+  window.addEventListener(ev, () => {
+    if (fitPending) return;
+    fitPending = true;
+    requestAnimationFrame(() => { fitPending = false; fitTable(); });
+  });
 }
 
 function zone(g, seat, shape, me) {
@@ -335,20 +422,28 @@ function zone(g, seat, shape, me) {
     .join('')
     + g.bonus[seat].map((t) => tileEl(t)).join('');
 
+  // an opponent's concealed hand as tile backs, the way a real table reads —
+  // only landscape has the room, so portrait keeps the numeric badge instead
+  const backs = isMe ? ''
+    : `<div class="backs">${Array.from({ length: g.handCounts[seat] }, () => tileEl(0, { back: true })).join('')}</div>`;
+
   return `<div class="zone ${side ? 'side' : ''}">
-    <div class="plate ${g.turn === seat && g.phase !== 'hand-over' ? 'turn' : ''} ${isMe ? 'me' : ''}">
-      <span class="wind cjk">${WINDS[windOf(seat, g.dealer)]}</span>
-      <span class="who">${esc(s.name || '—')}</span>
-      <span class="score ${g.scores[seat] < 0 ? 'neg' : ''}">${g.scores[seat]}</span>
-      ${g.dealer === seat ? '<span class="chip cjk">莊</span>' : ''}
-      ${g.riichiSeats?.[seat] ? '<span class="chip riichi cjk">立</span>' : ''}
-      ${s.bot ? '<span class="chip">bot</span>' : ''}
-      ${s.name && !s.connected ? '<span class="chip off">away</span>' : ''}
-      ${g.phase === 'claim' && g.claimPending?.includes(seat) ? '<span class="chip">…</span>' : ''}
+    ${backs}
+    <div class="zline">
+      <div class="plate ${g.turn === seat && g.phase !== 'hand-over' ? 'turn' : ''} ${isMe ? 'me' : ''}">
+        <span class="wind cjk">${WINDS[windOf(seat, g.dealer)]}</span>
+        <span class="who">${esc(s.name || '—')}</span>
+        <span class="score ${g.scores[seat] < 0 ? 'neg' : ''}">${g.scores[seat]}</span>
+        ${g.dealer === seat ? '<span class="chip cjk">莊</span>' : ''}
+        ${g.riichiSeats?.[seat] ? '<span class="chip riichi cjk">立</span>' : ''}
+        ${s.bot ? '<span class="chip">bot</span>' : ''}
+        ${s.name && !s.connected ? '<span class="chip off">away</span>' : ''}
+        ${g.phase === 'claim' && g.claimPending?.includes(seat) ? '<span class="chip">…</span>' : ''}
+      </div>
+      ${melds ? `<div class="zmelds">${melds}</div>` : ''}
+      ${isMe ? '' : `<span class="held">${g.handCounts[seat]}</span>`}
+      <div class="pond ${side ? 'narrow' : 'wide'}">${pond}</div>
     </div>
-    ${melds ? `<div class="zmelds">${melds}</div>` : ''}
-    ${isMe ? '' : `<span class="held">${g.handCounts[seat]}</span>`}
-    <div class="pond ${side ? 'narrow' : 'wide'}">${pond}</div>
   </div>`;
 }
 
@@ -489,12 +584,58 @@ function renderSheet(g) {
     return;
   }
   sheetDeferred = false;
+  // the match ending deserves its own screen — the last hand's scorecard is
+  // still reachable behind it rather than being the whole ceremony
+  if (g && g.phase === 'match-over' && g.summary && !showLastHand) {
+    el.innerHTML = matchSheet(g);
+    return;
+  }
   if (g && (g.phase === 'hand-over' || g.phase === 'match-over') && g.result) {
     el.innerHTML = resultSheet(g);
     return;
   }
   if (showLobby) { el.innerHTML = lobbySheet(); return; }
   el.innerHTML = '';
+}
+
+const PLACE = ['1st', '2nd', '3rd', '4th'];
+
+function matchSheet(g) {
+  const s = g.summary;
+  const seats = sync.room.seats;
+  const champion = s.order[0];
+  // equal scores share a place — 2nd and 3rd on the same total reads as wrong
+  const placeOf = s.order.map((seat, i, arr) => (i > 0 && s.scores[seat] === s.scores[arr[i - 1]] ? null : i));
+  for (let i = 1; i < placeOf.length; i++) if (placeOf[i] === null) placeOf[i] = placeOf[i - 1];
+  const rows = s.order.map((seat, i) => `
+    <div class="standing ${placeOf[i] === 0 ? 'win' : ''} ${seat === g.seat ? 'you' : ''}">
+      <div class="pos"><b>${PLACE[placeOf[i]].replace(/\D+$/, '')}</b><span>${PLACE[placeOf[i]].slice(-2)}</span></div>
+      <div class="who">
+        <span class="wind cjk">${WINDS[windOf(seat, g.dealer)]}</span>
+        <b>${esc(seats[seat]?.name || `Seat ${seat + 1}`)}</b>
+        ${seats[seat]?.bot ? '<span class="chip">bot</span>' : ''}
+      </div>
+      <div class="tally">
+        <span>${s.wins[seat]} won</span>
+        ${s.selfDraws[seat] ? `<span>${s.selfDraws[seat]} self-drawn</span>` : ''}
+        ${s.dealtIn[seat] ? `<span>${s.dealtIn[seat]} dealt in</span>` : ''}
+      </div>
+      <div class="total ${s.scores[seat] < 0 ? 'neg' : s.scores[seat] > 0 ? 'pos' : ''}">
+        ${s.scores[seat] > 0 ? '+' : ''}${s.scores[seat]}</div>
+    </div>`).join('');
+
+  return `<div class="sheet-inner matchend">
+    <div class="title-mark">終局</div>
+    <h1>${esc(seatName(champion))} takes the match</h1>
+    <div class="sub">${s.hands} hand${s.hands === 1 ? '' : 's'}${s.draws ? ` · ${s.draws} drawn` : ''}
+      · ${WIND_EN[g.roundWind] || ''} finished${s.best ? ` · biggest hand ${esc(s.best.label)} by ${esc(seatName(s.best.seat))}` : ''}</div>
+    <div class="standings">${rows}</div>
+    <div class="actions" style="justify-content:flex-start">
+      <button class="primary" data-a="rematch">Play again</button>
+      <button data-a="lasthand">Last hand</button>
+      <button class="ghost" data-a="restart">Back to the lobby</button>
+    </div>
+  </div>`;
 }
 
 function resultSheet(g) {
@@ -528,7 +669,7 @@ function resultSheet(g) {
 
   const waiting = seats.filter((s) => s.name && !s.bot && !s.nextReady).length;
   const btn = matchOver
-    ? `<button class="primary" data-a="restart">Back to the lobby</button>`
+    ? `<button class="primary" data-a="standings">Final standings</button>`
     : `<button class="primary" data-a="next">Next hand${waiting ? ` (${waiting} to go)` : ''}</button>`;
 
   return `<div class="sheet-inner">${head}${hand}${pats}${deltas}
@@ -730,7 +871,10 @@ document.addEventListener('click', (e) => {
     case 'timer': send({ t: 'config', claimSeconds: +b.dataset.n }); break;
     case 'bots': send({ t: 'config', bots: !sync.room.config.bots }); break;
     case 'start': send({ t: 'start' }); break;
-    case 'restart': send({ t: 'restart' }); showLobby = true; break;
+    case 'restart': send({ t: 'restart' }); showLobby = true; showLastHand = false; break;
+    case 'rematch': send({ t: 'rematch' }); showLastHand = false; break;
+    case 'lasthand': showLastHand = true; render(); break;
+    case 'standings': showLastHand = false; render(); break;
     case 'next': send({ t: 'next' }); break;
     case 'peek': showLobby = false; $('sheet').innerHTML = ''; break;
     case 'tsumo': act({ type: 'win' }); break;

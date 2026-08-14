@@ -616,6 +616,39 @@ export class Game {
     return { ok: true };
   }
 
+  /** Final standings, built from the per-hand history the match already keeps. */
+  summary() {
+    const wins = [0, 0, 0, 0], selfDraws = [0, 0, 0, 0], dealtIn = [0, 0, 0, 0];
+    let draws = 0, best = null;
+    for (const h of this.history) {
+      const r = h.result;
+      if (!r) continue;
+      if (r.kind !== 'win') { draws++; continue; }
+      wins[r.seat]++;
+      if (r.selfDraw) selfDraws[r.seat]++;
+      // whoever paid the most on a discard win was the one who fed it
+      else {
+        const loser = r.deltas.indexOf(Math.min(...r.deltas));
+        if (loser >= 0) dealtIn[loser]++;
+      }
+      if (!best || r.value > best.value) {
+        best = { seat: r.seat, label: r.label, value: r.value, handNo: h.handNo };
+      }
+    }
+    const order = [0, 1, 2, 3].sort((a, b) => this.scores[b] - this.scores[a]);
+    return {
+      hands: this.history.length,
+      scores: this.scores.slice(),
+      order,
+      wins,
+      selfDraws,
+      dealtIn,
+      draws,
+      best,
+      unit: this.v.scorer === 'riichi' ? 'points' : this.v.scorer === 'taiwan' ? 'points' : 'units',
+    };
+  }
+
   // -------------------------------------------------------------------- views
 
   publicState() {
@@ -647,6 +680,7 @@ export class Game {
         ? Object.keys(this.claim.options).filter((s) => !this.claim.responses[s]).map(Number)
         : [],
       result: this.result,
+      summary: this.phase === 'match-over' ? this.summary() : null,
       log: this.log.slice(-24),
       useBonus: this.v.bonusTiles,
       useRiichi: this.v.riichi,

@@ -393,6 +393,14 @@ function onConnection(conn, req) {
         for (const pl of r.players.values()) pl.ready = false;
         break;
       }
+      case 'rematch': {
+        // straight into another match with the same table — nobody has to
+        // re-seat and re-ready just because the last one finished
+        if (!r.game || r.game.phase !== 'match-over') return;
+        const res = r.start();
+        if (res.error) return conn.send({ t: 'error', msg: res.error });
+        break;
+      }
       case 'pong': break;
       default: break;
     }
