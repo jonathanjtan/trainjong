@@ -380,14 +380,14 @@ function renderTable(g) {
   board.innerHTML = simpleLayout ? flatTable(g, at) : arenaTable(g, at);
 }
 
-/* The same table the arena draws — concealed wall along each edge, melds
-   inboard of it, discards pooled around the middle — but on a three-by-three
-   grid instead of four rotated bands, so everything worth reading faces the
-   reader. The only thing that turns is the thing you cannot read anyway: a side
-   seat's wall lies sideways along its own edge, the way it would on a real
-   table, and thirteen tiles on their side are two thirds the length of thirteen
-   upright ones — which is the difference between the side bands leaving room
-   for the ponds and not. */
+/* The same table the arena draws — each seat's melds along their own edge, their
+   discards pooled around the middle — but on a three-by-three grid instead of
+   four rotated bands, so every tile faces the reader.
+
+   Where the arena lays out an opponent's concealed tiles one by one, this one
+   counts them on a single face-down tile. Thirteen backs are a bar as long as
+   the pond and say nothing thirteen does not; spending that edge on the melds
+   instead is what gives each seat a shape you can read from across the table. */
 function flatTable(g, at) {
   const dirOf = {};
   for (const [dir, seat] of Object.entries(at)) dirOf[seat] = dir;
@@ -406,20 +406,15 @@ function flatTable(g, at) {
   <div class="plates">${DIRS.map((dir) => plate(g, at[dir], dir, true)).join('')}</div>`;
 }
 
-/* Wall first, then the rest: the stylesheet reverses the two bands whose edge is
-   the far side of the box, so the same pieces read edge-inwards for all four.
-   Melds ride with the pond rather than between the wall and it — beside the
-   middle they would cost the ponds three tiles of width each, and width is what
-   the side bands are short of. */
+/* Edge first, pond second: the stylesheet reverses the two bands whose edge is
+   the far side of the box, so all four read from their own edge inwards. */
 function fband(g, seat, dir) {
-  const side = dir === 'left' || dir === 'right';
-  const { pond, melds, wall } = seatParts(g, seat, side);
+  const { pond, melds } = seatParts(g, seat);
+  const count = showsWall(g, seat)
+    ? `<div class="hcount">${tileEl(0, { back: true })}<span class="n num">${g.handCounts[seat]}</span></div>` : '';
   return `<div class="fband f-${dir}">
-    ${wall}
-    <div class="fgroup">
-      ${melds ? `<div class="fmelds">${melds}</div>` : ''}
-      <div class="pond">${pond}</div>
-    </div>
+    <div class="fedge">${count}${melds ? `<div class="fmelds">${melds}</div>` : ''}</div>
+    <div class="pond">${pond}</div>
   </div>`;
 }
 
@@ -490,9 +485,15 @@ function plate(g, seat, dir, withScore = false) {
   </div>`;
 }
 
-/* One seat's three pieces of table. Both layouts want the same three and differ
-   only in how they wrap them, so they are built once here. */
-function seatParts(g, seat, turnedWall = false) {
+/* Your own tiles are the hand in the footer, so only the others show what they
+   are holding. The propped-up table has no hand of its own, so it shows all four
+   — including when it is opened in the same browser as a seat, which hands it
+   that seat's token. */
+const showsWall = (g, seat) => seat !== g.seat || TABLE_VIEW;
+
+/* One seat's discards and melds. Both layouts want the same two and differ only
+   in how they wrap them, so they are built once here. */
+function seatParts(g, seat) {
   const newest = g.river[g.river.length - 1];
   const pond = g.river
     .filter((d) => d.seat === seat)
@@ -505,21 +506,21 @@ function seatParts(g, seat, turnedWall = false) {
         cls: isNewest && once(`d${g.handNo}:${g.river.length}`) ? 'fresh-discard' : '',
       });
     }).join('');
+  // flowers as one group, not one tile per line: stacked along a side seat's
+  // edge, four loose flowers are four rows and the whole table shrinks to pay
   const melds = g.melds[seat].map((m, i) => meldHTML(m, seat, true,
     once(`m${g.handNo}:${seat}:${i}:${m.type}:${m.tile}`) ? 'fresh-meld' : ''))
     .join('')
-    + g.bonus[seat].map((t) => tileEl(t, { size: 'zone' })).join('');
-  // your own wall is the hand in the footer; everyone else shows backs. The
-  // propped-up table has no hand of its own, so it shows all four — including
-  // when it is opened in the same browser as a seat, which hands it that token.
-  const wall = seat === g.seat && !TABLE_VIEW ? ''
-    : `<div class="backs">${Array.from({ length: g.handCounts[seat] },
-      () => tileEl(0, { back: true, turned: turnedWall })).join('')}</div>`;
-  return { pond, melds, wall };
+    + (g.bonus[seat].length
+      ? `<span class="bonusgroup">${g.bonus[seat].map((t) => tileEl(t, { size: 'zone' })).join('')}</span>` : '');
+  return { pond, melds };
 }
 
 function band(g, seat, dir) {
-  const { pond, melds, wall } = seatParts(g, seat);
+  const { pond, melds } = seatParts(g, seat);
+  // the arena has the edge to spare, so it draws the concealed tiles one by one
+  const wall = showsWall(g, seat)
+    ? `<div class="backs">${Array.from({ length: g.handCounts[seat] }, () => tileEl(0, { back: true })).join('')}</div>` : '';
   return `<div class="band b-${dir}">
     <div class="pond">${pond}</div>
     <div class="bandedge">

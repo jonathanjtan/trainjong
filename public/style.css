@@ -485,53 +485,50 @@ body.claiming .mine .hint { display: none; }
   min-height: 0;
 }
 
-/* the concealed wall along each edge, backs out */
-.flat .backs { display: flex; gap: 1px; align-items: center; justify-content: center; flex: 0 0 auto; }
-.flat .backs .tile { width: calc(var(--dw) * 0.5); filter: none; flex: 0 0 auto; }
-/* The side seats' walls lie sideways along their own edge, the way they would
-   on a real table. Not decoration: thirteen upright tiles are a bar wider than
-   the pond they sit beside, and on their side they are two thirds of that — and
-   a wall is the one thing on the table nobody can read anyway. */
-.f-left .backs, .f-right .backs { flex-direction: column; }
-.flat .backs .tile.turned {
-  width: calc(var(--dh) * 0.36);
-  height: calc(var(--dw) * 0.36);
-  display: grid;
-  place-items: center;
-}
-.flat .backs .tile.turned .tile-svg { width: calc(var(--dw) * 0.36); transform: rotate(90deg); }
-
-/* Melds sit alongside the pond, not between it and the wall: stacked, they cost
-   every seat a row of height apiece, and the near seats have width to spare
-   either side of a six-wide pond. Each seat keeps them on its own right, so the
-   four pinwheel round the table the way the discards do. */
-.fgroup {
+/* Each seat's edge: what they are holding, then their melds — the strip the
+   arena calls a bandedge. Every seat keeps the melds on its own right, so the
+   four pinwheel round the table the same way the discards do. */
+.fedge {
   display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: calc(var(--dw) * 0.22);
-  min-width: 0;
-}
-.f-top .fgroup { flex-direction: row; }
-.f-bottom .fgroup { flex-direction: row-reverse; }
-.f-left .fgroup { flex-direction: column; }
-.f-right .fgroup { flex-direction: column-reverse; }
-/* Melds wrap inside their own seat's block rather than running along the edge:
-   four of them laid end to end are wider than the pond they belong to, and on
-   the sides of the table that width comes straight out of everyone's tiles. The
-   near seats have the corners to spread into, so they get more of a line. */
-.fmelds {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
+  align-items: flex-end;
   justify-content: center;
   gap: calc(var(--dw) * 0.24);
   min-width: 0;
 }
-.f-top .fmelds, .f-bottom .fmelds { max-width: calc(var(--cols) * (var(--dw) + var(--gap))); }
-.f-left .fmelds, .f-right .fmelds { max-width: calc(var(--scols) * (var(--dw) + var(--gap))); }
-.fmelds { --mw: calc(var(--dw) * 0.78); }
-.fmelds .meld { gap: 1px; padding-right: 0; }
+.f-bottom .fedge { flex-direction: row; }
+.f-top .fedge { flex-direction: row-reverse; }
+.f-left .fedge { flex-direction: column; align-items: flex-start; }
+.f-right .fedge { flex-direction: column-reverse; align-items: flex-end; }
+
+/* The concealed hand as one face-down tile with its count on it. Thirteen backs
+   in a row say nothing this does not, and they cost the edge the melds want. */
+.hcount { position: relative; display: grid; place-items: center; flex: 0 0 auto; }
+.hcount .tile { width: calc(var(--dw) * 0.78); filter: none; }
+.hcount .n {
+  position: absolute;
+  font-size: calc(var(--dw) * 0.36);
+  font-weight: 600;
+  color: #eaf7f0;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.75);
+  line-height: 1;
+}
+
+/* Melds wrap inside their own seat's edge rather than running the length of it:
+   four laid end to end are wider than the pond they belong to. Beside the middle
+   there is no room to wrap into, so the side seats stack theirs. */
+.fmelds {
+  --mw: calc(var(--dw) * 0.78);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: center;
+  gap: calc(var(--dw) * 0.24);
+  min-width: 0;
+}
+.f-top .fmelds, .f-bottom .fmelds { max-width: calc(var(--cols) * (var(--dw) + var(--gap)) * 1.5); }
+.f-left .fmelds { flex-direction: column; align-items: flex-start; }
+.f-right .fmelds { flex-direction: column; align-items: flex-end; }
+.fmelds .meld, .fmelds .bonusgroup { gap: 1px; padding-right: 0; }
 .fmelds .tile { width: var(--mw); filter: none; }
 
 /* discard piles */
@@ -726,10 +723,8 @@ body.claiming .mine .hint { display: none; }
   justify-content: center;
   gap: calc(var(--dw) * 0.45);
 }
-/* `flex` is spelled out rather than left to the default: the flat layout's
-   landscape block also styles .backs, and its `flex: 0 0 auto` would otherwise
-   leak in here — shrink 0, so a 17-tile Taiwanese wall stops shrinking and
-   spills straight past the edge of the table, but only in landscape. */
+/* a 17-tile Taiwanese wall has to be able to squeeze, or it spills straight
+   past the edge of the table */
 .arena .backs { display: flex; gap: 1px; align-items: flex-end; flex: 0 1 auto; min-width: 0; }
 .arena .backs .tile { width: calc(var(--dw) * 0.74); filter: none; flex: 0 1 auto; min-width: 0; }
 .bmelds { --mw: calc(var(--dw) * 0.82); display: flex; gap: calc(var(--dw) * 0.2); align-items: flex-end; flex: 0 1 auto; min-width: 0; }
