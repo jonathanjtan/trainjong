@@ -599,7 +599,10 @@ body.claiming .mine .hint { display: none; }
   --dh: calc(var(--dw) * 1.4);
   --gap: 1px;
   --prows: 3;                                  /* pond rows, set by the renderer */
-  --cols: 7;
+  /* 6 × 3, and the slab in the middle is exactly as wide as a pond row — the
+     ratio Mahjong Soul uses. It was 7, which bought three more discards of
+     headroom and spent the whole table's tile size on them. */
+  --cols: 6;
   --ring: calc(var(--cols) * (var(--dw) + var(--gap)));
   --pondh: calc(var(--prows) * (var(--dh) + var(--gap)));
   --bedge: calc(var(--dw) * 1.18);             /* wall + melds strip */
@@ -609,6 +612,21 @@ body.claiming .mine .hint { display: none; }
      strip, which crosses every corner on its way past */
   --npw: calc(var(--blk) - var(--bedge) - 5px);
   --nph: clamp(26px, calc(var(--dw) * 2.5), 46px);
+
+  /* Tilted away from the viewer, the way both reference games draw the table.
+     This is not decoration: landscape has width to spare and no height, and a
+     flat square can only ever be as big as the short edge. Laying it back trades
+     the surplus width for a bigger table — about a third more tile — and the
+     near half, which is your own, gains most. fitArena() sets the angle from how
+     much surplus width there actually is, and leaves it at 0 in portrait.
+
+     The vanishing distance is a multiple of the table rather than a fixed px, so
+     the perspective looks the same on a phone as on a laptop — and, handily,
+     that makes the projection a pure scale of --S, so the fit stays solvable. */
+  --tilt: 0deg;
+  --persp: calc(var(--S) * 3.2);
+  --shift: 0px;
+  transform: translateY(var(--shift)) perspective(var(--persp)) rotateX(var(--tilt));
 
   position: relative;
   width: var(--S);
@@ -681,7 +699,11 @@ body.claiming .mine .hint { display: none; }
   justify-content: center;
   gap: calc(var(--dw) * 0.45);
 }
-.arena .backs { display: flex; gap: 1px; align-items: flex-end; min-width: 0; }
+/* `flex` is spelled out rather than left to the default: the flat layout's
+   landscape block also styles .backs, and its `flex: 0 0 auto` would otherwise
+   leak in here — shrink 0, so a 17-tile Taiwanese wall stops shrinking and
+   spills straight into the corner plates, but only in landscape. */
+.arena .backs { display: flex; gap: 1px; align-items: flex-end; flex: 0 1 auto; min-width: 0; }
 .arena .backs .tile { width: calc(var(--dw) * 0.58); filter: none; flex: 0 1 auto; min-width: 0; }
 .bmelds { display: flex; gap: calc(var(--dw) * 0.2); align-items: flex-end; min-width: 0; }
 .bmelds .meld { gap: 1px; padding-right: 0; min-width: 0; }
@@ -773,11 +795,14 @@ body.claiming .mine .hint { display: none; }
 .chub .s-top > span { transform: rotate(180deg); }
 .chub .s-left > span { transform: rotate(90deg); }
 .chub .s-right > span { transform: rotate(-90deg); }
+/* Static, and brighter rather than dimmer: `pulse` fades opacity to 0.25, which
+   made the seat to play the one score you could not read. The plate in the
+   corner already carries the motion, and it glows by box-shadow. */
 .chub .sc.on {
-  background: rgba(203, 156, 62, 0.22);
-  box-shadow: inset 0 0 0 1px rgba(203, 156, 62, 0.5);
-  animation: pulse 2.2s ease-in-out infinite;
+  background: rgba(203, 156, 62, 0.26);
+  box-shadow: inset 0 0 0 1px rgba(203, 156, 62, 0.65);
 }
+.chub .sc.on i { color: #fff; }
 .chub .mid {
   grid-area: 2 / 2 / 3 / 3;
   display: flex;
@@ -787,9 +812,19 @@ body.claiming .mine .hint { display: none; }
   gap: 1px;
   min-width: 0;
 }
-.chub .rw { font-family: var(--cjk); color: var(--brass); line-height: 1; font-size: clamp(16px, calc(var(--ring) * 0.26), 44px); }
-.chub .hn { font-size: clamp(7px, calc(var(--ring) * 0.082), 13px); color: #86b3a4; letter-spacing: 0.1em; text-transform: uppercase; }
-.chub .wl { font-size: clamp(8px, calc(var(--ring) * 0.1), 16px); font-weight: 600; }
+/* round and hand on one line, wall on the next — the slab should read at a
+   glance and then get out of the way of the discards */
+.chub .rw {
+  display: flex;
+  align-items: baseline;
+  gap: 0.12em;
+  line-height: 1;
+  color: var(--brass);
+  font-size: clamp(15px, calc(var(--ring) * 0.235), 40px);
+}
+.chub .rw .cjk { font-family: var(--cjk); }
+.chub .rw i { font-style: normal; font-size: 0.62em; font-weight: 600; }
+.chub .wl { font-size: clamp(8px, calc(var(--ring) * 0.105), 17px); font-weight: 600; color: #cfe3da; }
 
 /* dora and the running commentary, homeless now the middle belongs to the table */
 .rail .raildora { display: flex; gap: 2px; flex: 0 0 auto; }

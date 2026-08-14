@@ -66,9 +66,17 @@ Port taken? `node server.js 9000` or `PORT=9000 node server.js`.
 - **The table is drawn as a table.** Discards pool in the middle in four blocks,
   and every tile a player owns — their discards, their concealed wall, their
   melds — is turned to face that player, the way it sits on a real table (and
-  the way Mahjong Soul and friends draw it). The middle slab carries the round,
-  the wall count and the four scores, each score turned towards its own seat,
-  with the seat to play lit. Names stay upright in the corners.
+  the way Mahjong Soul and friends draw it). Six discards to a row, three rows,
+  and the slab in the middle exactly as wide as a row — the reference's ratio.
+  The slab carries the round, the wall count and the four scores, each score
+  turned towards its own seat, with the seat to play lit. Names stay upright in
+  the corners.
+- **It lies back in landscape**, again like the reference. That is not just
+  decoration: a flat square table can only ever be as big as the short edge of
+  the screen, and landscape has width going spare. Tilting it trades that
+  surplus width for about a third more tile, and the near half — which is yours
+  — gains the most. The angle comes from how much surplus width there actually
+  is, so portrait, which has none, stays flat and top-down.
 - **`simple` in the top bar** flattens all that back to the older layout: every
   seat upright, ponds beside their player rather than pooled. It sticks per
   browser, so one player can use it without affecting the table.
@@ -124,6 +132,16 @@ it together:
   border shrinks the content box and the rotation centre the bands are spun
   about lands a pixel off — which shows up as all four sides being out of true.
   The rim is an inset `box-shadow` for that reason.
+- **The vanishing distance is a multiple of `--S`, not a fixed px.** That keeps
+  the perspective looking the same on a phone as on a laptop, and it keeps the
+  projection a plain scale of the square, so the fit still lands in one
+  correction. A fixed `perspective` would make it a different shape at every
+  size and the solve would have to iterate blindly.
+
+Watch for the flat layout's CSS reaching into the arena. Both share `.backs`,
+and the flat layout's landscape block sets `flex: 0 0 auto` on it — shrink
+zero. `.arena .backs` has to spell `flex` out, or a 17-tile Taiwanese wall
+stops shrinking and spills into the corner plates, in landscape only.
 
 The ponds are a fixed number of rows so the bands stay the same size all hand;
 `pondRows()` predicts what flex wrap will do (a sideways riichi tile is 1.4
