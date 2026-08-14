@@ -298,10 +298,23 @@ body {
 .river { display: flex; flex-wrap: wrap; gap: 3px; min-height: 40px; align-content: flex-start; }
 .river .tile { filter: none; }
 
-.meldrow { display: flex; align-items: center; gap: 8px; padding: 3px 0; flex-wrap: wrap; }
+.meldrow { --mw: 28px; display: flex; align-items: center; gap: 8px; padding: 3px 0; flex-wrap: wrap; }
 .meldrow .who { font-size: 11px; width: 62px; flex: 0 0 auto; opacity: 0.8; }
-.meld { display: flex; gap: 1px; padding-right: 6px; }
+.meld { display: flex; gap: 1px; padding-right: 6px; align-items: flex-end; }
 .meld.closed .tile { opacity: 0.95; }
+/* A claimed tile lies on its side. Every context sizes its meld tiles
+   differently, so each sets --mw and the turned box is written off that: the
+   svg keeps its own width and turns inside a box with the two swapped. */
+.meld .tile { width: var(--mw, 28px); }
+.meld .tile.turned {
+  width: calc(var(--mw, 28px) * 1.4);
+  height: var(--mw, 28px);
+  display: grid;
+  place-items: center;
+}
+.meld .tile.turned .tile-svg { width: var(--mw, 28px); transform: rotate(90deg); }
+/* the fourth tile of an added kong lies across the one it was claimed with */
+.meld .kstack { display: flex; flex-direction: column-reverse; gap: 1px; }
 .bonusgroup { display: flex; gap: 1px; opacity: 0.9; }
 
 .mine { background: linear-gradient(to top, var(--felt-deep) 55%, rgba(6, 33, 28, 0.75)); padding: 8px 10px 10px; border-top: 1px solid rgba(203, 156, 62, 0.25); }
@@ -323,13 +336,14 @@ body {
 /* --tw is the target size; flex-shrink is the safety net so a hand with melds
    and flowers can never run off the edge no matter what the arithmetic says */
 .rack .tile, .handmelds .tile { width: var(--tw); flex: 0 1 auto; min-width: 0; }
+.handmelds { --mw: calc(var(--tw) * 0.82); }
 .rack .tile.drawn { margin-left: 9px; }
 .rack .tile.sel { transform: translateY(-12px); }
 .rack .tile.pick { cursor: pointer; }
 .handmelds { display: flex; gap: 6px; align-items: flex-end; opacity: 0.92; min-width: 0; flex: 0 1 auto; }
 .handmelds .meld { display: flex; gap: 1px; min-width: 0; }
 .handmelds .bonusgroup { display: flex; gap: 1px; min-width: 0; }
-.handmelds .tile { width: calc(var(--tw) * 0.82); }
+.handmelds .tile { width: var(--mw); }
 @media (min-width: 700px) {
   .handrow { --tw: clamp(20px, min(calc(880px / var(--slots)), 9vh), 50px); }
 }
@@ -516,8 +530,9 @@ body.claiming .mine .hint { display: none; }
 }
 .f-top .fmelds, .f-bottom .fmelds { max-width: calc(var(--cols) * (var(--dw) + var(--gap))); }
 .f-left .fmelds, .f-right .fmelds { max-width: calc(var(--scols) * (var(--dw) + var(--gap))); }
+.fmelds { --mw: calc(var(--dw) * 0.78); }
 .fmelds .meld { gap: 1px; padding-right: 0; }
-.fmelds .tile { width: calc(var(--dw) * 0.78); filter: none; }
+.fmelds .tile { width: var(--mw); filter: none; }
 
 /* discard piles */
 .pond {
@@ -717,11 +732,11 @@ body.claiming .mine .hint { display: none; }
    spills straight past the edge of the table, but only in landscape. */
 .arena .backs { display: flex; gap: 1px; align-items: flex-end; flex: 0 1 auto; min-width: 0; }
 .arena .backs .tile { width: calc(var(--dw) * 0.74); filter: none; flex: 0 1 auto; min-width: 0; }
-.bmelds { display: flex; gap: calc(var(--dw) * 0.2); align-items: flex-end; flex: 0 1 auto; min-width: 0; }
+.bmelds { --mw: calc(var(--dw) * 0.82); display: flex; gap: calc(var(--dw) * 0.2); align-items: flex-end; flex: 0 1 auto; min-width: 0; }
 .bmelds .meld { gap: 1px; padding-right: 0; min-width: 0; }
 /* a full Taiwanese wall alongside four kongs still outruns the edge; let the
    tiles squeeze rather than spill past the table */
-.bmelds .tile { width: calc(var(--dw) * 0.82); filter: none; flex: 0 1 auto; min-width: 0; }
+.bmelds .tile { width: var(--mw); filter: none; flex: 0 1 auto; min-width: 0; }
 
 /* Names float in the felt around the table rather than sitting on it. Anchored
    to the board's own corners, which is where the table is not: landscape leaves
@@ -1149,6 +1164,7 @@ input[type=text] {
 /* melds are 1px apart inside and 12px apart outside, so four pungs of the same
    tile read as four sets rather than one long undifferentiated run */
 .result-hand .meld { padding-right: 0; margin-right: 8px; }
+.result-hand { --mw: clamp(30px, 8.2vw, 44px); }
 table.pat { width: 100%; border-collapse: collapse; font-size: 13px; }
 table.pat td { padding: 5px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.08); }
 table.pat td.zh { font-family: var(--cjk); width: 30%; color: var(--paper); }

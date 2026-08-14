@@ -505,7 +505,7 @@ function seatParts(g, seat, turnedWall = false) {
         cls: isNewest && once(`d${g.handNo}:${g.river.length}`) ? 'fresh-discard' : '',
       });
     }).join('');
-  const melds = g.melds[seat].map((m, i) => meldHTML(m, true,
+  const melds = g.melds[seat].map((m, i) => meldHTML(m, seat, true,
     once(`m${g.handNo}:${seat}:${i}:${m.type}:${m.tile}`) ? 'fresh-meld' : ''))
     .join('')
     + g.bonus[seat].map((t) => tileEl(t, { size: 'zone' })).join('');
@@ -712,14 +712,46 @@ for (const ev of ['resize', 'orientationchange']) {
   });
 }
 
-function meldHTML(m, compact = false, extra = '') {
+/* Every mahjong table lays a claimed tile on its side, and which side of the
+   meld it lies on says who it was claimed from: the outer left tile for the
+   player on your left, the middle for the one across, the outer right for the
+   one on your right. It is the only record of who fed whom, and it is read at a
+   glance from across the table — so the meld is built around that slot, with
+   the claimed tile moved into it and the rest kept in order.
+   Returns the index of the slot, or -1 for a meld nobody was fed. */
+function claimedSlot(m, seat, n) {
+  if (!m.open || m.from === null || m.from === undefined || seat === undefined || seat === null) return -1;
+  // turn order runs counter-clockwise: the seat after yours sits on your right
+  const rel = (m.from - seat + 4) % 4;
+  return rel === 3 ? 0 : rel === 1 ? n - 1 : rel === 2 ? 1 : -1;
+}
+
+function meldHTML(m, seat, compact = false, extra = '') {
+  // an added kong is a pung with the fourth tile laid across its claimed tile,
+  // so it is drawn from three slots, not four
+  const added = m.kongType === 'added';
   const ts = m.type === 'chow' ? [m.tile, m.tile + 1, m.tile + 2]
-    : m.type === 'kong' ? [m.tile, m.tile, m.tile, m.tile]
+    : m.type === 'kong' && !added ? [m.tile, m.tile, m.tile, m.tile]
       : [m.tile, m.tile, m.tile];
-  const inner = ts.map((t, i) => tileEl(t, {
-    size: compact ? 'zone' : 'xs',
-    back: m.type === 'kong' && !m.open && (i === 0 || i === 3),
-  })).join('');
+  const size = compact ? 'zone' : 'xs';
+  const slot = claimedSlot(m, seat, ts.length);
+  let order = ts;
+  if (slot >= 0) {
+    const rest = ts.slice();
+    const i = rest.indexOf(m.claimed);
+    if (i >= 0) order = [...rest.slice(0, i), ...rest.slice(i + 1)];
+    order = [...order.slice(0, slot), m.claimed ?? m.tile, ...order.slice(slot)];
+  }
+  const inner = order.map((t, i) => {
+    if (i === slot && added) {
+      return `<span class="kstack">${tileEl(t, { size, turned: true }).repeat(2)}</span>`;
+    }
+    return tileEl(t, {
+      size,
+      turned: i === slot,
+      back: m.type === 'kong' && !m.open && (i === 0 || i === 3),
+    });
+  }).join('');
   return `<span class="meld ${m.open ? '' : 'closed'} ${extra}">${inner}</span>`;
 }
 
@@ -751,7 +783,7 @@ function renderMine(g) {
       `data-i="${hand.length}" class="tile drawn ${freshDraw} ${sel === hand.length ? 'sel' : ''} ${canPick(g.drawn) ? 'pick' : ''}`)
     : '';
 
-  const myMelds = g.melds[g.seat].map((m) => meldHTML(m, true)).join('');
+  const myMelds = g.melds[g.seat].map((m) => meldHTML(m, g.seat, true)).join('');
   const myBonus = g.bonus[g.seat].map((t) => tileEl(t, { size: 'zone' })).join('');
   // slots = everything shown on the hand row, so tiles never overflow the width
   // and never grow past their start-of-hand size when you meld
@@ -916,7 +948,7 @@ function resultSheet(g) {
   // note the arrow: map() passes the index too, which would land in `compact`
   const hand = r.kind === 'win'
     ? `<div class="result-hand">${r.hand.map((t) => tileEl(t, { size: 'sm', ring: t === r.winTile })).join('')}
-       ${r.melds.map((m) => meldHTML(m)).join('')}${r.bonus.map((t) => tileEl(t, { size: 'sm' })).join('')}</div>`
+       ${r.melds.map((m) => meldHTML(m, r.seat)).join('')}${r.bonus.map((t) => tileEl(t, { size: 'sm' })).join('')}</div>`
     : '';
 
   const pats = r.kind === 'win' && r.patterns?.length
