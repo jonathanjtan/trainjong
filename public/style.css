@@ -214,6 +214,18 @@ body {
 }
 .rail .meta { display: flex; gap: 12px; margin-left: auto; align-items: baseline; }
 .rail .meta b { font-family: var(--num); font-size: 14px; font-weight: 600; }
+/* wall count, promoted out of the hub so the table keeps the height */
+.rail .wallcount {
+  font-family: var(--num);
+  font-size: 11px;
+  color: #9dc3b5;
+  white-space: nowrap;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+}
+.rail .wallcount b { font-size: 13px; font-weight: 700; color: var(--paper); }
 
 .seats {
   display: grid;
@@ -340,6 +352,13 @@ body {
   .rack .tile.drawn { margin-left: 6px; }
   .handmelds { width: 100%; justify-content: center; }
 }
+/* On a short phone two rows of 42px would take a third of the screen and starve
+   the table, which then has to shrink its tiles to the floor. Cap the hand so
+   both halves stay usable. */
+@media (orientation: portrait) and (max-width: 640px) and (max-height: 720px) {
+  .handrow { --tw: clamp(20px, min(calc((100vw - 20px) / var(--rowslots)), 7vh), 33px); padding: 6px 0 4px; }
+  .mine { padding: 4px 10px 6px; }
+}
 .hint { text-align: center; font-size: 11px; color: #9dc3b5; min-height: 15px; }
 .hint b { color: var(--brass); }
 
@@ -372,6 +391,8 @@ button .cjk { font-size: 17px; margin-right: 5px; }
   max-width: 900px;
   width: 100%;
   margin: 0 auto;
+  /* anchor for the landscape floating button clusters */
+  position: relative;
 }
 .tray {
   background: linear-gradient(to top, #0a2b24, #0c3b31);
@@ -436,7 +457,16 @@ body.claiming .mine .hint { display: none; }
   /* clip rather than overlap the hub if a pond ever outgrows its row */
   overflow: hidden;
 }
-.zone.side { max-width: calc(4 * var(--dw) + 14px); }
+/* Five columns, not four. The side ponds are the tallest thing on the board —
+   they get the fewest columns yet the same number of discards — so widening
+   them is what buys back the vertical room on a short phone. The hub moving its
+   wind/wall readout to the rail is what freed the horizontal space for it. */
+/* plate, melds and pond as one group; portrait stacks it, landscape lays it on
+   its side so the plate sits beside the pond (see the landscape block) */
+.zline { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; }
+.backs { display: none; }        /* landscape only — portrait shows .held */
+
+.zone.side { max-width: calc(5 * var(--dw) + 14px); }
 
 /* name plates */
 .plate {
@@ -466,8 +496,21 @@ body.claiming .mine .hint { display: none; }
 }
 .plate .score { font-family: var(--num); font-size: 12px; font-weight: 600; }
 .plate .score.neg { color: #f0a29a; }
-.zone.side .plate { flex-direction: column; gap: 1px; border-radius: 10px; padding: 4px 5px; }
-.zone.side .plate .who { max-width: 66px; font-size: 10px; }
+/* The side plates stack, so they were the tallest thing that does NOT shrink
+   with the tiles — 64px each, straight out of the budget the ponds need. Wrap
+   them instead of hard-stacking so wind+score share a line with the name. */
+.zone.side .plate {
+  flex-flow: row wrap;
+  justify-content: center;
+  gap: 0 4px;
+  border-radius: 10px;
+  padding: 2px 6px;
+  line-height: 1.2;
+}
+.zone.side .plate .who { max-width: 100%; font-size: 10px; }
+.zone.side .plate .wind { font-size: 12px; }
+.zone.side .plate .score { font-size: 11px; }
+.zone.side .plate .chip { font-size: 8px; padding: 0 3px; }
 
 /* discard piles */
 .pond {
@@ -478,7 +521,7 @@ body.claiming .mine .hint { display: none; }
   align-content: flex-start;
 }
 .pond.wide { width: calc(6 * var(--dw) + 10px); }
-.pond.narrow { width: calc(4 * var(--dw) + 6px); }
+.pond.narrow { width: calc(5 * var(--dw) + 6px); }
 .pond .tile { flex: 0 0 auto; }
 .pond .tile { width: var(--dw, 20px); filter: none; }
 .pond .tile.turned {
@@ -494,7 +537,7 @@ body.claiming .mine .hint { display: none; }
 /* melds shown beside each player */
 .zmelds { display: flex; gap: 3px; flex-wrap: wrap; justify-content: center; }
 .zmelds .tile { width: var(--dw, 20px); filter: none; }
-.zone.side .zmelds { max-width: 84px; }
+.zone.side .zmelds { max-width: calc(5 * var(--dw) + 6px); }
 .held {
   font-family: var(--num);
   font-size: 10px;
@@ -519,6 +562,10 @@ body.claiming .mine .hint { display: none; }
 .hub .rw { font-family: var(--cjk); font-size: 30px; color: var(--brass); line-height: 1; }
 .hub .wall { font-family: var(--num); font-size: 13px; font-weight: 600; }
 .hub .wall span { font-size: 10px; font-weight: 400; color: #8fb6a8; }
+/* wind and wall moved to the rail, so in-play the hub is just the running
+   commentary (and dora, in riichi) — it no longer dominates the middle row */
+.hub.compact { padding: 5px 9px; gap: 2px; min-width: 0; max-width: 150px; }
+.hub.compact:empty, .hub.compact:has(> .last:empty):not(:has(.dora)) { display: none; }
 .hub .dora { display: flex; gap: 2px; }
 .hub .dora .tile { width: 24px; filter: none; }
 .hub .last { font-size: 10px; color: #9dc3b5; text-align: center; max-width: 132px; line-height: 1.3; }
@@ -544,37 +591,138 @@ body.claiming .mine .hint { display: none; }
 
 /* ------------------------------------------------------------- landscape */
 
+/* Landscape is the good way to play, so it gets its own layout rather than a
+   squashed portrait one. Borrowed from Mahjong Soul: the hand owns the whole
+   bottom edge at full size, each opponent's concealed tiles show as backs, the
+   name plate sits beside its own pond, the middle is one small pill, and the
+   call buttons float over the lower right instead of stealing width from the
+   hand. */
 @media (orientation: landscape) and (max-height: 620px) {
-  .rail { padding: 3px 10px; gap: 7px; }
-  .rail .round { font-size: 16px; }
-  .rail .eyebrow { font-size: 10px; }
-  .board { padding: 3px 6px 4px; gap: 4px; }
-  .table { --dw: clamp(14px, 2.6vh, 26px); gap: 3px; padding: 3px; border-radius: 10px; }
-  .plate { padding: 2px 6px; gap: 4px; }
-  .plate .who { font-size: 10px; max-width: 60px; }
-  .plate .wind { font-size: 12px; }
-  .hub { padding: 4px 8px; min-width: 76px; gap: 1px; }
-  .hub .rw { font-size: 20px; }
-  .hub .wall { font-size: 11px; }
-  .hub .last { display: none; }
-  .hub .dora .tile { width: 15px; }
-  .handrow {
-    padding: 4px 0 2px;
-    min-height: 0;
-    flex: 1 1 auto;
-    --tw: clamp(13px, min(calc((100vw - 210px) / var(--slots)), 8.6vh), 32px);
+  .rail { padding: 2px 10px; gap: 7px; }
+  .rail .round { font-size: 15px; }
+  .rail .eyebrow { font-size: 9px; }
+  .rail .wallcount { font-size: 10px; padding: 1px 6px; }
+  .board { padding: 2px 8px 3px; gap: 3px; }
+  .table {
+    /* aim high and let fitTable() bisect it down — landscape has far more
+       width than height, so a height-only clamp badly under-uses the board */
+    --dw: clamp(12px, min(3.2vw, 6.8vh), 30px);
+    grid-template-columns: auto auto auto;
+    grid-template-rows: auto 1fr auto;
+    place-content: center;
+    gap: 3px 8px;
+    padding: 2px 6px;
+    border-radius: 10px;
   }
-  /* hand and buttons share a row so the footer stays short */
-  .mine { padding: 2px 8px 6px; display: flex; align-items: center; gap: 8px; }
-  .mine .handrow { min-width: 0; }
-  .mine .actions { flex: 0 0 auto; display: flex; flex-wrap: wrap; max-width: 190px; gap: 5px; margin: 0; }
-  .mine .actions button { padding: 6px 10px; min-height: 32px; font-size: 12px; }
+  /* top and bottom span the full width, so their ponds get plenty of columns
+     and stay two rows deep; the sides keep the middle band short */
+  .z-top { grid-area: 1 / 1 / 2 / 4; }
+  .z-bottom { grid-area: 3 / 1 / 4 / 4; }
+  .z-left { grid-area: 2 / 1; }
+  .z-hub { grid-area: 2 / 2; }
+  .z-right { grid-area: 2 / 3; }
+
+  .zone { overflow: visible; }
+  .zone.side { max-width: none; }
+  .zline { flex-direction: row; align-items: center; gap: 7px; }
+  /* the plate reads left-to-right again out here — there is width for it */
+  .zone.side .plate { flex-flow: row nowrap; padding: 2px 7px; gap: 4px; }
+  .zone.side .plate .who { font-size: 10px; max-width: 62px; }
+  .plate { padding: 2px 7px; gap: 4px; }
+  .plate .who { font-size: 10px; max-width: 70px; }
+  .plate .wind { font-size: 12px; }
+  .pond.wide { width: calc(10 * var(--dw) + 18px); }
+  .pond.narrow { width: calc(6 * var(--dw) + 10px); }
+  .zone.side .zmelds { max-width: calc(3 * var(--dw) + 4px); }
+  .held { display: none; }
+
+  /* opponents' concealed hands, as tile backs. Always a horizontal strip above
+     the plate — stacked vertically a 13-tile hand is taller than the whole
+     middle band and just reads as a bar. */
+  .backs { display: flex; gap: 1px; opacity: 0.9; flex: 0 0 auto; justify-content: center; }
+  .backs .tile { width: calc(var(--dw) * 0.52); filter: none; }
+  .zone { gap: 2px; }
+  /* the two side zones mirror each other around the middle. The bottom keeps
+     its plate on the LEFT so the lower-right corner stays clear for the
+     floating call buttons — that corner is the only place they can live. */
+  .z-right .zline { flex-direction: row-reverse; }
+
+  .hub { padding: 4px 10px; min-width: 0; gap: 1px; flex-direction: row; align-items: center; }
+  .hub.compact { max-width: 160px; }
+  .hub .last { font-size: 9px; max-width: 92px; }
+  .hub .dora .tile { width: 15px; }
+
+  /* the hand keeps the full width; one row, as large as the strip allows */
+  .mine { padding: 2px 8px 4px; }
+  .handrow {
+    padding: 2px 0;
+    min-height: 0;
+    flex-wrap: nowrap;
+    --tw: clamp(16px, min(calc((100vw - 24px) / var(--slots)), 11.5vh), 54px);
+  }
+  .rack { flex-wrap: nowrap; max-width: none; }
   .mine .hint { display: none; }
-  .mine .meldrow { display: none; }
-  .tray { padding: 5px 10px 6px; }
-  .tray .head { gap: 8px; }
-  .tray .opts { margin-top: 5px; }
-  .tray .opts button { padding: 6px 11px; min-height: 34px; font-size: 13px; }
+
+  /* Both button groups float over the table's lower right, anchored to the top
+     of the footer, so the hand never gives up width for them. bottom:100% is
+     measured from the footer box, which is exactly the top of the hand strip. */
+  body.claiming .rack { padding-top: 0; }
+  .mine .actions {
+    position: absolute;
+    right: 8px;
+    bottom: 100%;
+    margin-bottom: 6px;
+    display: flex;
+    gap: 5px;
+    padding: 0;
+    max-width: 60vw;
+    justify-content: flex-end;
+    z-index: 29;
+  }
+  .mine .actions button {
+    min-height: 38px;
+    padding: 9px 12px;
+    font-size: 13px;
+    font-weight: 700;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.55);
+  }
+  .tray {
+    position: absolute;
+    right: 8px;
+    bottom: 100%;
+    margin-bottom: 6px;
+    width: auto;
+    padding: 0;
+    background: none;
+    border: 0;
+    box-shadow: none;
+    z-index: 30;
+    animation: pop 160ms ease-out;
+  }
+  .tray .head { display: none; }
+  .tray .opts {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 4px;
+    margin: 0;
+    width: max-content;
+    max-width: 268px;
+    margin-left: auto;
+  }
+  .tray .opts button {
+    padding: 7px 9px;
+    min-height: 36px;
+    font-size: 12px;
+    font-weight: 700;
+    max-width: 132px;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.6);
+  }
+  .tray .opts button .cjk { font-size: 13px; margin-right: 2px; }
+  .tray .chowopt { padding: 4px 7px; gap: 1px; }
+  .tray .chowopt .tile { width: 15px; }
   #bonus { top: 6%; }
   .bonuscard { padding: 8px 12px; gap: 8px; }
   .bonuscard .tiles .tile { width: 30px; }
@@ -777,6 +925,56 @@ table.pat td.en { color: #9dc3b5; font-size: 12px; }
 table.pat td.v { text-align: right; font-family: var(--num); color: var(--brass); width: 46px; white-space: nowrap; }
 table.pat tr.total td { border-bottom: none; font-weight: 700; padding-top: 8px; }
 
+/* ------------------------------------------------------- final standings */
+
+.matchend h1 { font-size: 22px; }
+.standings { display: flex; flex-direction: column; gap: 6px; margin: 16px 0 4px; }
+.standing {
+  display: grid;
+  grid-template-columns: 44px 1fr auto;
+  grid-template-rows: auto auto;
+  align-items: center;
+  gap: 0 10px;
+  padding: 9px 12px;
+  border-radius: var(--r);
+  background: rgba(0, 0, 0, 0.24);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  animation: sheetIn 340ms ease-out backwards;
+}
+.standing:nth-child(1) { animation-delay: 60ms; }
+.standing:nth-child(2) { animation-delay: 150ms; }
+.standing:nth-child(3) { animation-delay: 240ms; }
+.standing:nth-child(4) { animation-delay: 330ms; }
+.standing.win { border-color: var(--brass); background: rgba(203, 156, 62, 0.14); }
+.standing.you { box-shadow: inset 0 0 0 1px rgba(203, 156, 62, 0.4); }
+/* every cell placed explicitly — auto-placement flows the spanning cells into
+   the wrong tracks and puts the name where the score should be */
+.standing .pos {
+  grid-area: 1 / 1 / 3 / 2;
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 1px;
+  color: #86b3a4;
+}
+.standing .pos b { font-family: var(--num); font-size: 19px; font-weight: 700; }
+.standing .pos span { font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase; font-weight: 700; }
+.standing.win .pos { color: var(--brass); }
+.standing .who { grid-area: 1 / 2 / 2 / 3; display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+.standing .who b { font-size: 15px; font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.standing .who .wind { font-family: var(--cjk); font-size: 15px; color: var(--brass); flex: 0 0 auto; }
+.standing .tally { grid-area: 2 / 2 / 3 / 3; display: flex; flex-wrap: wrap; gap: 2px 10px; font-size: 11px; color: #9dc3b5; margin-top: 2px; }
+.standing .total {
+  grid-area: 1 / 3 / 3 / 4;
+  font-family: var(--num);
+  font-size: 20px;
+  font-weight: 700;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.standing .total.pos { color: #7fe0b0; }
+.standing .total.neg { color: #f0a29a; }
+
 .deltas { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 12px 0; }
 .deltas div { text-align: center; padding: 8px 4px; border-radius: 8px; background: rgba(255, 255, 255, 0.07); }
 .deltas .d { font-family: var(--num); font-size: 15px; font-weight: 600; }
@@ -840,7 +1038,7 @@ body.table-view .plate { padding: 4px 10px; }
 body.table-view .plate .who { font-size: clamp(12px, 1.5vh, 20px); max-width: 200px; }
 body.table-view .plate .score { font-size: clamp(13px, 1.7vh, 24px); }
 body.table-view .plate .wind { font-size: clamp(14px, 1.9vh, 26px); }
-body.table-view .zone.side { max-width: calc(4 * var(--dw) + 20px); }
+body.table-view .zone.side { max-width: calc(5 * var(--dw) + 20px); }
 body.table-view .hub { padding: clamp(6px, 1.2vh, 16px) clamp(8px, 1.4vw, 20px); }
 body.table-view .hub .rw { font-size: clamp(26px, 5vh, 64px); }
 body.table-view .hub .wall { font-size: clamp(13px, 1.8vh, 24px); }
