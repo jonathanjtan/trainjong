@@ -18,6 +18,8 @@ let seatsOpen = false;
 let showLastHand = false;
 let muted = localStorage.getItem('mj_muted') === '1';
 let buzz = localStorage.getItem('mj_buzz') !== '0';
+// the rotated-band table is the default; this falls back to the flat one
+let simpleLayout = localStorage.getItem('mj_simple') === '1';
 let seenBonus = 0;
 let lastTurnSeat = null, lastPhase = null, clockTimer = null, lastHandNo = null;
 
@@ -278,12 +280,19 @@ function renderRail(g) {
       <span class="meta">${railButtons(g)}</span>`;
     return;
   }
-  // the round wind and the wall count live up here rather than in the middle of
-  // the table — the hub was the tallest thing competing with the ponds for room
+  // Two rails, because the two layouts want different things here. The arena
+  // carries the round and the wall in its middle slab, so repeating them up here
+  // only costs width a narrow phone does not have — it spends that on the dora
+  // and the last move instead, which the arena has nowhere to put. The flat
+  // layout is the other way round: its hub owns the commentary, and the round
+  // and wall were moved out here precisely to stop the hub crowding the ponds.
   $('rail').innerHTML = `
     <span class="round cjk">${WINDS[g.roundWind]}</span>
-    <span class="eyebrow">${WIND_EN[g.roundWind]} · hand ${g.handNo}</span>
-    <span class="wallcount"><b>${g.wall}</b> left</span>
+    ${simpleLayout ? `<span class="eyebrow">${WIND_EN[g.roundWind]} · hand ${g.handNo}</span>
+      <span class="wallcount"><b>${g.wall}</b> left</span>` : ''}
+    ${!simpleLayout && g.doraIndicators?.length
+      ? `<span class="raildora">${g.doraIndicators.map((t) => tileEl(t)).join('')}</span>` : ''}
+    ${!simpleLayout ? `<span class="railmsg">${esc(g.log[g.log.length - 1]?.msg || '')}</span>` : ''}
     <span class="meta">
       ${g.honba ? `<span class="eyebrow">本場 <b>${g.honba}</b></span>` : ''}
       ${g.riichiPot ? `<span class="eyebrow">pot <b>${g.riichiPot}</b></span>` : ''}
@@ -294,6 +303,8 @@ function renderRail(g) {
 function railButtons(g) {
   const canJoin = g && g.phase !== 'idle' && sync.you.seat === null;
   return `${canJoin ? `<button class="mini" data-a="seats" title="Take a bot's seat">seats</button>` : ''}
+    <button class="mini ${simpleLayout ? 'on' : ''}" data-a="simple"
+      title="Flat layout — every seat upright">simple</button>
     <button class="mini" data-a="guide" title="How to play">?</button>
     <button class="mini" data-a="mute" title="Sound">${muted ? '🔇' : '🔔'}</button>
     ${'vibrate' in navigator ? `<button class="mini ${buzz ? 'on' : ''}" data-a="buzz" title="Vibrate on your turn">buzz</button>` : ''}
@@ -326,12 +337,18 @@ function renderTable(g) {
     return;
   }
   const me = g.seat === null || g.seat === undefined ? 0 : g.seat;
+  // turn order runs counter-clockwise, so the seat after yours sits on your right
   const at = { bottom: me, right: (me + 1) % 4, top: (me + 2) % 4, left: (me + 3) % 4 };
+  board.innerHTML = simpleLayout ? flatTable(g, at) : arenaTable(g, at);
+}
+
+function flatTable(g, at) {
+  const me = at.bottom;
   const dirOf = {};
   for (const [dir, seat] of Object.entries(at)) dirOf[seat] = dir;
   const arrow = { top: '▲', bottom: '▼', left: '◀', right: '▶' }[dirOf[g.turn]] || '';
 
-  board.innerHTML = `<div class="table">
+  return `<div class="table">
     <div class="z-top">${zone(g, at.top, 'wide', me)}</div>
     <div class="z-left">${zone(g, at.left, 'narrow', me)}</div>
     <div class="z-hub hubwrap">
@@ -346,6 +363,108 @@ function renderTable(g) {
   </div>`;
 }
 
+/* ------------------------------------------------------------------ arena */
+/* The table the way Mahjong Soul and Amatsuki draw it: discards pooled in the
+   middle in four blocks, each block — and each player's concealed wall, melds
+   and plate with it — turned to face the seat it belongs to.
+
+   All of that is one band, written once for the bottom player and then rotated
+   0/90/180/270° about the middle of the square for the other three. Nothing is
+   positioned per-seat, so the four sides cannot drift out of agreement: every
+   dimension is a multiple of --dw and the geometry is symmetric by construction.
+   The plate is the one exception — it rides along in the corner but counter-
+   rotates its text, because an upside-down name is just unreadable. */
+
+const POND_COLS = 7;
+const DIRS = ['bottom', 'right', 'top', 'left'];
+
+/* The pond has a fixed height so the four bands stay the same size, which means
+   we have to know up front how many rows the longest one wants. Mirrors what
+   flex wrap will do: fill greedily, and count a sideways riichi tile as wider. */
+function pondRows(river, seat) {
+  let rows = 1, used = 0;
+  for (const d of river) {
+    if (d.seat !== seat) continue;
+    const w = d.riichi ? 1.4 : 1;
+    if (used + w > POND_COLS + 0.01) { rows++; used = w; } else used += w;
+  }
+  return rows;
+}
+
+function arenaTable(g, at) {
+  const prows = Math.max(3, ...[0, 1, 2, 3].map((s) => pondRows(g.river, s)));
+  return `<div class="arena" style="--prows:${prows}">
+    ${DIRS.map((dir) => band(g, at[dir], dir)).join('')}
+    ${centre(g, at)}
+  </div>`;
+}
+
+function band(g, seat, dir) {
+  const s = sync.room.seats[seat];
+  const newest = g.river[g.river.length - 1];
+  const pond = g.river
+    .filter((d) => d.seat === seat)
+    .map((d, i, arr) => {
+      const isNewest = i === arr.length - 1 && d === newest;
+      return tileEl(d.tile, {
+        dim: d.taken,
+        turned: !!d.riichi,
+        ring: isNewest && !d.taken,
+        cls: isNewest && once(`d${g.handNo}:${g.river.length}`) ? 'fresh-discard' : '',
+      });
+    }).join('');
+  const melds = g.melds[seat].map((m, i) => meldHTML(m, true,
+    once(`m${g.handNo}:${seat}:${i}:${m.type}:${m.tile}`) ? 'fresh-meld' : ''))
+    .join('')
+    + g.bonus[seat].map((t) => tileEl(t, { size: 'zone' })).join('');
+  // your own wall is the hand in the footer; everyone else shows backs. The
+  // propped-up table has no hand of its own, so it shows all four — including
+  // when it is opened in the same browser as a seat, which hands it that token.
+  const backs = seat === g.seat && !TABLE_VIEW ? ''
+    : `<div class="backs">${Array.from({ length: g.handCounts[seat] }, () => tileEl(0, { back: true })).join('')}</div>`;
+  const chips = [
+    g.dealer === seat ? '<span class="chip cjk">莊</span>' : '',
+    g.riichiSeats?.[seat] ? '<span class="chip riichi cjk">立</span>' : '',
+    s.bot ? '<span class="chip">bot</span>' : '',
+    s.name && !s.connected ? '<span class="chip off">away</span>' : '',
+    g.phase === 'claim' && g.claimPending?.includes(seat) ? '<span class="chip">…</span>' : '',
+  ].filter(Boolean).join('');
+
+  return `<div class="band b-${dir}">
+    <div class="pond">${pond}</div>
+    <div class="bandedge">
+      <div class="nplate ${g.turn === seat && g.phase !== 'hand-over' ? 'turn' : ''} ${seat === g.seat ? 'me' : ''}">
+        <div class="nin">
+          <div class="nm">${esc(s.name || '—')}</div>
+          ${chips ? `<div class="chips">${chips}</div>` : ''}
+        </div>
+      </div>
+      <div class="bcontent">${backs}${melds ? `<div class="bmelds">${melds}</div>` : ''}</div>
+    </div>
+  </div>`;
+}
+
+/* The little slab in the middle: round and wall in the centre, the four scores
+   around the rim, each turned towards the seat it belongs to. Whoever is to
+   play has their side lit — that replaces the arrow the flat layout uses. */
+function centre(g, at) {
+  const score = (dir) => {
+    const seat = at[dir];
+    const on = g.turn === seat && g.phase !== 'hand-over';
+    return `<div class="sc s-${dir} ${on ? 'on' : ''}"><span>
+      <b class="cjk">${WINDS[windOf(seat, g.dealer)]}</b>
+      <i class="num ${g.scores[seat] < 0 ? 'neg' : ''}">${g.scores[seat]}</i></span></div>`;
+  };
+  return `<div class="chub">
+    ${DIRS.map(score).join('')}
+    <div class="mid">
+      <div class="rw cjk">${WINDS[g.roundWind]}</div>
+      <div class="hn">hand ${g.handNo}</div>
+      <div class="wl num">×${g.wall}</div>
+    </div>
+  </div>`;
+}
+
 /* The table's grid rows are `auto`, so they grow with the ponds while the table
    box itself is capped by the flex layout. Late in a hand — 18 discards each
    plus melds — the rows outgrow the box: the middle row collapses, the hub gets
@@ -353,6 +472,45 @@ function renderTable(g) {
    CSS cannot size tiles from "how many rows the content happens to need", so
    measure what the rows want and shrink --dw until they fit. */
 const MIN_DW = 10;
+const MAX_DW = 46;
+
+function fitTable() {
+  if ($('board')?.querySelector('.arena')) return fitArena();
+  return fitFlatTable();
+}
+
+/* The arena is a square whose side is a straight line in --dw: some multiple of
+   the tile size plus a fixed number of pixels of gap. Rather than restate that
+   sum here — where it would rot the moment the CSS changes — set
+   two probe sizes, measure what comes out, and solve the line. The result only
+   depends on how many rows the ponds asked for, so it caches per row count. */
+const arenaCal = new Map();
+
+function fitArena() {
+  const board = $('board');
+  const arena = board?.querySelector('.arena');
+  if (!arena) return;
+  const cs = getComputedStyle(board);
+  const availW = board.clientWidth - (parseFloat(cs.paddingLeft) || 0) - (parseFloat(cs.paddingRight) || 0);
+  const availH = board.clientHeight - (parseFloat(cs.paddingTop) || 0) - (parseFloat(cs.paddingBottom) || 0);
+  const avail = Math.min(availW, availH);
+  if (avail <= 0) return;
+
+  const prows = arena.style.getPropertyValue('--prows') || '3';
+  let cal = arenaCal.get(prows);
+  if (!cal) {
+    arena.style.setProperty('--dw', '12px');
+    const lo = arena.getBoundingClientRect().width;
+    arena.style.setProperty('--dw', '32px');
+    const hi = arena.getBoundingClientRect().width;
+    const k = (hi - lo) / 20;
+    if (!(k > 0)) { arena.style.setProperty('--dw', '16px'); return; }
+    cal = { k, c: lo - 12 * k };
+    arenaCal.set(prows, cal);
+  }
+  const dw = Math.max(MIN_DW, Math.min(MAX_DW, (avail - cal.c) / cal.k));
+  arena.style.setProperty('--dw', `${dw.toFixed(2)}px`);
+}
 
 function tableNeed(table) {
   const h = (sel) => { const el = table.querySelector(sel); return el ? el.getBoundingClientRect().height : 0; };
@@ -362,7 +520,7 @@ function tableNeed(table) {
   return h('.z-top') + middle + h('.z-bottom') + (parseFloat(cs.rowGap) || 0) * 2;
 }
 
-function fitTable() {
+function fitFlatTable() {
   const table = $('board')?.querySelector('.table');
   if (!table) return;
   table.style.removeProperty('--dw');          // start from the CSS ideal each time
@@ -397,6 +555,9 @@ for (const ev of ['resize', 'orientationchange']) {
   window.addEventListener(ev, () => {
     if (fitPending) return;
     fitPending = true;
+    // a rotation can cross a media query, which may move the numbers the arena
+    // calibration was solved from
+    arenaCal.clear();
     requestAnimationFrame(() => { fitPending = false; fitTable(); });
   });
 }
@@ -860,6 +1021,12 @@ document.addEventListener('click', (e) => {
       // this tap is a gesture, so it can unlock as well as confirm — without a
       // test note there is no way to tell "sound on" from "sound broken"
       if (!muted) { unlockAudio(); ping(760); }
+      render();
+      break;
+    case 'simple':
+      simpleLayout = !simpleLayout;
+      localStorage.setItem('mj_simple', simpleLayout ? '1' : '0');
+      arenaCal.clear();
       render();
       break;
     case 'sit': send({ t: 'sit', seat: +b.dataset.seat }); break;
