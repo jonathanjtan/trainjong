@@ -78,7 +78,7 @@ body {
 .t-sm { width: 38px; }
 .t-md { width: 50px; }
 .t-lg { width: 62px; }
-/* 'zone' tiles are sized by whatever context they sit in (.rack, .zmelds,
+/* 'zone' tiles are sized by whatever context they sit in (.fmelds, .bmelds,
    .handmelds). This is the backstop so one that escapes cannot balloon. */
 .t-zone { width: 26px; }
 
@@ -182,8 +182,7 @@ body {
 .deltas > div:nth-child(3) { animation-delay: 180ms; }
 .deltas > div:nth-child(4) { animation-delay: 240ms; }
 
-/* it is your turn: the plate and the whole table edge acknowledge it */
-.plate.turn { animation: turnGlow 2.2s ease-in-out infinite; }
+/* it is your turn: your name plate acknowledges it */
 @keyframes turnGlow {
   0%, 100% { box-shadow: 0 0 10px rgba(203, 156, 62, 0.18); }
   50% { box-shadow: 0 0 18px rgba(203, 156, 62, 0.42); }
@@ -287,7 +286,6 @@ body {
   gap: 10px;
   position: relative;                  /* anchor for the floating name plates */
 }
-.board > .table { flex: 1 1 auto; min-height: 0; }
 
 .panel {
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -422,98 +420,104 @@ body.claiming .mine .hint { display: none; }
 .tray .opts button { padding: 9px 13px; min-height: 40px; }
 .tray .chowopt { display: flex; align-items: center; gap: 2px; padding: 6px 8px; }
 
-/* ----------------------------------------------------------------- table */
+/* ------------------------------------------------------------------ flat */
 
-.table {
-  /* sized from the viewport so the whole table always fits without scrolling —
-     the vh term is what stops the bottom player falling off a laptop screen */
-  --dw: clamp(16px, min(6.8vw, 5vh), 40px);
+/* The same table the arena draws — concealed wall along each edge, melds
+   inboard of it, discards pooled around the middle — on a three-by-three grid
+   instead of four rotated bands, so everything worth reading faces the reader.
+   One band is written once and put four ways up: the two far bands reverse
+   their flex direction, so all four read from their own edge inwards without a
+   single transform.
+
+   The box shrink-wraps its content and fitFlatTable() bisects --dw until it
+   fits the board, which is why nothing in here is sized off the viewport. */
+.flat {
+  --dw: clamp(14px, min(5vw, 4.4vh), 40px);    /* a first guess; the fit decides */
   --dh: calc(var(--dw) * 1.4);
+  --gap: 1px;
+  --cols: 6;                                   /* discards to a row, near seats */
+  --scols: 5;                                  /* ... and side seats */
   display: grid;
-  grid-template-columns: minmax(58px, auto) minmax(0, 1fr) minmax(58px, auto);
-  grid-template-rows: auto minmax(0, 1fr) auto;
-  align-content: center;
-  gap: 6px;
-  align-items: center;
+  grid-template-columns: auto auto auto;
+  grid-template-rows: auto auto auto;
   justify-items: center;
-  padding: 6px 4px;
-  border-radius: 14px;
+  align-items: center;
+  gap: calc(var(--dw) * 0.3);
+  width: max-content;
+  height: max-content;
+  flex: 0 0 auto;
+  margin: auto;                                /* centred in the board both ways */
+  padding: calc(var(--dw) * 0.35);
+  border-radius: calc(var(--dw) * 0.7);
   background:
-    radial-gradient(ellipse at 50% 45%, rgba(255, 255, 255, 0.05), transparent 62%),
+    radial-gradient(ellipse at 50% 50%, rgba(255, 255, 255, 0.05), transparent 64%),
     linear-gradient(160deg, rgba(0, 0, 0, 0.16), rgba(0, 0, 0, 0.3));
   border: 1px solid rgba(203, 156, 62, 0.18);
 }
-.z-top { grid-area: 1 / 2; }
-.z-left { grid-area: 2 / 1; }
-.z-hub { grid-area: 2 / 2; }
-.z-right { grid-area: 2 / 3; }
-.z-bottom { grid-area: 3 / 2; }
+/* the near and far bands span the whole edge, so their wall and melds can use
+   the corners the side bands do not reach */
+.f-top    { grid-area: 1 / 1 / 2 / 4; flex-direction: column; }
+.f-bottom { grid-area: 3 / 1 / 4 / 4; flex-direction: column-reverse; }
+.f-left   { grid-area: 2 / 1; flex-direction: row; }
+.f-right  { grid-area: 2 / 3; flex-direction: row-reverse; }
+.f-hub    { grid-area: 2 / 2; }
 
-.zone {
+.fband {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 4px;
-  width: 100%;
+  justify-content: center;
+  gap: calc(var(--dw) * 0.26);
   min-width: 0;
   min-height: 0;
-  /* clip rather than overlap the hub if a pond ever outgrows its row */
-  overflow: hidden;
 }
-/* Five columns, not four. The side ponds are the tallest thing on the board —
-   they get the fewest columns yet the same number of discards — so widening
-   them is what buys back the vertical room on a short phone. The hub moving its
-   wind/wall readout to the rail is what freed the horizontal space for it. */
-/* plate, melds and pond as one group; portrait stacks it, landscape lays it on
-   its side so the plate sits beside the pond (see the landscape block) */
-.zline { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; }
-.backs { display: none; }        /* landscape only — portrait shows .held */
 
-.zone.side { max-width: calc(5 * var(--dw) + 14px); }
+/* the concealed wall along each edge, backs out */
+.flat .backs { display: flex; gap: 1px; align-items: center; justify-content: center; flex: 0 0 auto; }
+.flat .backs .tile { width: calc(var(--dw) * 0.5); filter: none; flex: 0 0 auto; }
+/* The side seats' walls lie sideways along their own edge, the way they would
+   on a real table. Not decoration: thirteen upright tiles are a bar wider than
+   the pond they sit beside, and on their side they are two thirds of that — and
+   a wall is the one thing on the table nobody can read anyway. */
+.f-left .backs, .f-right .backs { flex-direction: column; }
+.flat .backs .tile.turned {
+  width: calc(var(--dh) * 0.36);
+  height: calc(var(--dw) * 0.36);
+  display: grid;
+  place-items: center;
+}
+.flat .backs .tile.turned .tile-svg { width: calc(var(--dw) * 0.36); transform: rotate(90deg); }
 
-/* name plates */
-.plate {
+/* Melds sit alongside the pond, not between it and the wall: stacked, they cost
+   every seat a row of height apiece, and the near seats have width to spare
+   either side of a six-wide pond. Each seat keeps them on its own right, so the
+   four pinwheel round the table the way the discards do. */
+.fgroup {
   display: flex;
   align-items: center;
-  gap: 5px;
-  padding: 3px 7px;
-  border-radius: 999px;
-  background: rgba(0, 0, 0, 0.34);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  max-width: 100%;
-  transition: border-color 150ms ease, background 150ms ease;
-}
-.plate.turn {
-  border-color: var(--brass);
-  background: rgba(203, 156, 62, 0.16);
-  box-shadow: 0 0 12px rgba(203, 156, 62, 0.25);
-}
-.plate.me { box-shadow: inset 0 0 0 1px rgba(203, 156, 62, 0.4); }
-.plate .wind { font-family: var(--cjk); font-size: 14px; color: var(--brass); line-height: 1; }
-.plate .who {
-  font-size: 11px;
-  max-width: 72px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.plate .score { font-family: var(--num); font-size: 12px; font-weight: 600; }
-.plate .score.neg { color: #f0a29a; }
-/* The side plates stack, so they were the tallest thing that does NOT shrink
-   with the tiles — 64px each, straight out of the budget the ponds need. Wrap
-   them instead of hard-stacking so wind+score share a line with the name. */
-.zone.side .plate {
-  flex-flow: row wrap;
   justify-content: center;
-  gap: 0 4px;
-  border-radius: 10px;
-  padding: 2px 6px;
-  line-height: 1.2;
+  gap: calc(var(--dw) * 0.22);
+  min-width: 0;
 }
-.zone.side .plate .who { max-width: 100%; font-size: 10px; }
-.zone.side .plate .wind { font-size: 12px; }
-.zone.side .plate .score { font-size: 11px; }
-.zone.side .plate .chip { font-size: 8px; padding: 0 3px; }
+.f-top .fgroup { flex-direction: row; }
+.f-bottom .fgroup { flex-direction: row-reverse; }
+.f-left .fgroup { flex-direction: column; }
+.f-right .fgroup { flex-direction: column-reverse; }
+/* Melds wrap inside their own seat's block rather than running along the edge:
+   four of them laid end to end are wider than the pond they belong to, and on
+   the sides of the table that width comes straight out of everyone's tiles. The
+   near seats have the corners to spread into, so they get more of a line. */
+.fmelds {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: calc(var(--dw) * 0.24);
+  min-width: 0;
+}
+.f-top .fmelds, .f-bottom .fmelds { max-width: calc(var(--cols) * (var(--dw) + var(--gap))); }
+.f-left .fmelds, .f-right .fmelds { max-width: calc(var(--scols) * (var(--dw) + var(--gap))); }
+.fmelds .meld { gap: 1px; padding-right: 0; }
+.fmelds .tile { width: calc(var(--dw) * 0.78); filter: none; }
 
 /* discard piles */
 .pond {
@@ -523,8 +527,6 @@ body.claiming .mine .hint { display: none; }
   align-items: flex-end;
   align-content: flex-start;
 }
-.pond.wide { width: calc(6 * var(--dw) + 10px); }
-.pond.narrow { width: calc(5 * var(--dw) + 6px); }
 .pond .tile { flex: 0 0 auto; }
 .pond .tile { width: var(--dw, 20px); filter: none; }
 .pond .tile.turned {
@@ -537,22 +539,23 @@ body.claiming .mine .hint { display: none; }
 .pond .tile.dim { opacity: 0.34; }
 .pond .tile.ring { outline: 2px solid var(--brass); outline-offset: 1px; border-radius: 3px; }
 
-/* Melds beside each player, drawn smaller than the discards. They are reference
-   rather than reading matter, and in this layout they are what actually sets
-   the table's height: at full tile size a seat with three melds wraps to three
-   rows and the whole table shrinks to pay for it. */
-.zmelds { display: flex; gap: 3px; flex-wrap: wrap; justify-content: center; }
-.zmelds .tile { width: calc(var(--dw, 20px) * 0.78); filter: none; }
-.zone.side .zmelds { max-width: calc(5 * var(--dw) + 6px); }
-/* rides in the name plate rather than taking a line of its own */
-.held {
-  font-family: var(--num);
-  font-size: 10px;
-  color: #8fb6a8;
-  background: rgba(0, 0, 0, 0.3);
-  border-radius: 4px;
-  padding: 0 4px;
+.flat .pond { gap: var(--gap); justify-content: flex-start; }
+.f-top .pond, .f-bottom .pond { width: calc(var(--cols) * (var(--dw) + var(--gap))); }
+.f-left .pond, .f-right .pond { width: calc(var(--scols) * (var(--dw) + var(--gap))); }
+/* the far seat lays its discards out away from the middle, so — like everyone
+   else's — the row nearest the middle is the one they started with */
+.f-top .pond { flex-wrap: wrap-reverse; }
+
+/* The hub is the middle column, so its width comes straight off the ponds'.
+   Fixed pixels there cost a narrow board most of a tile, so it scales too. */
+.flat .hub.compact {
+  max-width: calc(var(--dw) * 5.4);
+  padding: calc(var(--dw) * 0.14) calc(var(--dw) * 0.22);
+  gap: calc(var(--dw) * 0.08);
+  border-radius: calc(var(--dw) * 0.3);
 }
+.flat .hub .last { font-size: clamp(8px, calc(var(--dw) * 0.3), 15px); max-width: 100%; }
+.flat .hub .dora .tile { width: calc(var(--dw) * 0.72); }
 
 /* the hub */
 .hub {
@@ -583,6 +586,7 @@ body.claiming .mine .hint { display: none; }
   animation: pulse 1.6s infinite;
 }
 .hubwrap { position: relative; display: grid; place-items: center; }
+.idlehub { margin: auto; }
 .hubwrap .a-top { top: -13px; }
 .hubwrap .a-bottom { bottom: -13px; }
 .hubwrap .a-left { left: -13px; }
@@ -754,6 +758,8 @@ body.claiming .mine .hint { display: none; }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.nplate .sc { font-family: var(--num); font-size: 12px; font-weight: 600; flex: 0 0 auto; }
+.nplate .sc.neg { color: #f0a29a; }
 .nplate .chip { flex: 0 0 auto; }
 .nplate.turn {
   border-color: var(--brass);
@@ -857,12 +863,11 @@ body.claiming .mine .hint { display: none; }
 
 /* ------------------------------------------------------------- landscape */
 
-/* Landscape is the good way to play, so it gets its own layout rather than a
-   squashed portrait one. Borrowed from Mahjong Soul: the hand owns the whole
-   bottom edge at full size, each opponent's concealed tiles show as backs, the
-   name plate sits beside its own pond, the middle is one small pill, and the
-   call buttons float over the lower right instead of stealing width from the
-   hand. */
+/* Landscape is the good way to play, so the furniture around the table gets its
+   own sizes rather than squashed portrait ones: the hand owns the whole bottom
+   edge at full size, the middle is one small pill, and the call buttons float
+   over the lower right instead of stealing width from the hand. The table
+   itself needs no landscape rules — it is measured into whatever box is left. */
 @media (orientation: landscape) and (max-height: 620px) {
   .rail { padding: 2px 10px; gap: 7px; }
   .rail .round { font-size: 15px; }
@@ -871,79 +876,8 @@ body.claiming .mine .hint { display: none; }
   .rail .raildora .tile { width: 14px; }
   .rail .railmsg { font-size: 10px; }
   .board { padding: 2px 8px 3px; gap: 3px; }
-  /* the arena is square, so landscape leaves felt either side of it — that is
-     where the floating call buttons now sit, clear of the table entirely */
-  .table {
-    /* aim high and let fitTable() bisect it down — landscape has far more
-       width than height, so a height-only clamp badly under-uses the board */
-    --dw: clamp(12px, min(3.6vw, 9.5vh), 38px);
-    grid-template-columns: auto auto auto;
-    grid-template-rows: auto 1fr auto;
-    place-content: center;
-    gap: 3px 8px;
-    padding: 2px 6px;
-    border-radius: 10px;
-  }
-  /* top and bottom span the full width, so their ponds get plenty of columns
-     and stay two rows deep; the sides keep the middle band short */
-  .z-top { grid-area: 1 / 1 / 2 / 4; }
-  .z-bottom { grid-area: 3 / 1 / 4 / 4; }
-  .z-left { grid-area: 2 / 1; }
-  .z-hub { grid-area: 2 / 2; }
-  .z-right { grid-area: 2 / 3; }
-
-  .zone { overflow: visible; }
-  .zone.side { max-width: none; }
-  .zline { flex-direction: row; align-items: center; gap: 7px; }
-
-  /* Side plates turn to face their own seat, like nameplates on a real table.
-     writing-mode rather than transform: rotate() leaves the original box in
-     the layout, so a rotated plate would still reserve its full width and
-     shove the pond sideways. Vertical writing actually re-flows the box.
-     Left seat faces the centre, so its text runs top-to-bottom; the right
-     seat faces the other way, so 180deg flips it to read bottom-to-top. */
-  .zone.side .plate {
-    writing-mode: vertical-rl;
-    text-orientation: sideways;
-    flex-flow: row nowrap;
-    padding: 7px 3px;
-    gap: 4px;
-    /* sits at the head of its pond rather than centred: a turned plate is tall
-       enough that a centred one reaches into the floating call buttons */
-    align-self: flex-start;
-    /* Turned, the plate's length becomes height — and unlike the tiles it does
-       not scale, so a long name next to a six-figure riichi score would steal
-       the middle row and make fitTable() shrink the ponds to pay for it. Bound
-       it; overflow trims the trailing chips, never the wind or the score. */
-    max-height: 132px;
-    overflow: hidden;
-  }
-  .z-right .plate { transform: rotate(180deg); }
-  /* the name is clipped along the inline axis, which is now vertical */
-  .zone.side .plate .who { font-size: 10px; max-width: none; max-height: 52px; }
-  .zone.side .plate .score { font-size: 10px; }
-  .zone.side .plate .chip { font-size: 7px; padding: 0 3px; }
-  .plate { padding: 2px 7px; gap: 4px; }
-  .plate .who { font-size: 10px; max-width: 70px; }
-  .plate .wind { font-size: 12px; }
-  .pond.wide { width: calc(10 * var(--dw) + 18px); }
-  .pond.narrow { width: calc(6 * var(--dw) + 10px); }
-  .zone.side .zmelds { max-width: calc(4.5 * var(--dw) + 4px); }
-  .held { display: none; }
-
-  /* opponents' concealed hands, as tile backs. Always a horizontal strip above
-     the plate — stacked vertically a 13-tile hand is taller than the whole
-     middle band and just reads as a bar. */
-  .backs { display: flex; gap: 1px; opacity: 0.9; flex: 0 0 auto; justify-content: center; }
-  .backs .tile { width: calc(var(--dw) * 0.52); filter: none; }
-  .zone { gap: 2px; }
-  /* Both side plates sit on the INNER edge, flanking the centre, with their
-     ponds outboard. Mirrored, and it keeps the turned plates away from the
-     lower-right corner, which is the only place the call buttons can live.
-     The bottom plate stays left for the same reason. */
-  .z-left .zline { flex-direction: row-reverse; }
-  .z-right .zline { flex-direction: row; }
-
+  /* the flat table sizes itself off the box it is given, so landscape needs
+     nothing said about it here beyond a tighter hub and a tighter hand */
   .hub { padding: 4px 10px; min-width: 0; gap: 1px; flex-direction: row; align-items: center; }
   .hub.compact { max-width: 160px; }
   .hub .last { font-size: 9px; max-width: 92px; }
@@ -1317,28 +1251,16 @@ table.pat tr.total td { border-bottom: none; font-weight: 700; padding-top: 8px;
 /* --------------------------------------------------------- table (laptop) */
 
 body.table-view .mine, body.table-view .tray, body.table-view .foot { display: none; }
-/* the laptop propped in the middle: fill the screen, scale off the smaller
-   viewport dimension so nothing ever falls off the bottom */
-body.table-view .board { padding: 0; max-width: none; }
-body.table-view .table {
-  --dw: clamp(16px, min(3.1vw, 3.3vh), 46px);
-  max-width: min(100%, 1150px);
-  margin: 0 auto;
-  width: 100%;
-  height: 100%;
-  padding: clamp(6px, 1.4vh, 22px);
-  gap: clamp(4px, 1vh, 16px);
-  border-radius: 0;
-  border: 0;
-}
-body.table-view .plate { padding: 4px 10px; }
-body.table-view .plate .who { font-size: clamp(12px, 1.5vh, 20px); max-width: 200px; }
-body.table-view .plate .score { font-size: clamp(13px, 1.7vh, 24px); }
-body.table-view .plate .wind { font-size: clamp(14px, 1.9vh, 26px); }
-body.table-view .zone.side { max-width: calc(5 * var(--dw) + 20px); }
+/* the laptop propped in the middle of the table: no hand to keep, so the board
+   is the whole screen and both tables simply measure themselves into it. Only
+   the furniture that does not scale with the tiles is told to grow. */
+body.table-view .board { padding: 6px; max-width: none; }
+body.table-view .nplate { padding: 5px 11px; gap: 7px; }
+body.table-view .nplate .nm { font-size: clamp(12px, 1.6vh, 21px); }
+body.table-view .nplate .sc { font-size: clamp(12px, 1.7vh, 22px); }
+body.table-view .nplate .wind { font-size: clamp(14px, 1.9vh, 26px); }
 body.table-view .hub { padding: clamp(6px, 1.2vh, 16px) clamp(8px, 1.4vw, 20px); }
 body.table-view .hub .rw { font-size: clamp(26px, 5vh, 64px); }
-body.table-view .hub .wall { font-size: clamp(13px, 1.8vh, 24px); }
 body.table-view .hub .dora .tile { width: clamp(16px, 3vh, 40px); }
 body.table-view .hub .last { font-size: clamp(10px, 1.4vh, 17px); max-width: 260px; }
 

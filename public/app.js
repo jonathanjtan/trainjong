@@ -370,8 +370,8 @@ function renderSeats() {
 function renderTable(g) {
   const board = $('board');
   if (!g || g.phase === 'idle') {
-    board.innerHTML = `<div class="table"><div class="z-hub hub">
-      <div class="rw cjk">麻</div><div class="last">Waiting in the lobby</div></div></div>`;
+    board.innerHTML = `<div class="hub idlehub">
+      <div class="rw cjk">麻</div><div class="last">Waiting in the lobby</div></div>`;
     return;
   }
   const me = g.seat === null || g.seat === undefined ? 0 : g.seat;
@@ -380,24 +380,46 @@ function renderTable(g) {
   board.innerHTML = simpleLayout ? flatTable(g, at) : arenaTable(g, at);
 }
 
+/* The same table the arena draws — concealed wall along each edge, melds
+   inboard of it, discards pooled around the middle — but on a three-by-three
+   grid instead of four rotated bands, so everything worth reading faces the
+   reader. The only thing that turns is the thing you cannot read anyway: a side
+   seat's wall lies sideways along its own edge, the way it would on a real
+   table, and thirteen tiles on their side are two thirds the length of thirteen
+   upright ones — which is the difference between the side bands leaving room
+   for the ponds and not. */
 function flatTable(g, at) {
-  const me = at.bottom;
   const dirOf = {};
   for (const [dir, seat] of Object.entries(at)) dirOf[seat] = dir;
   const arrow = { top: '▲', bottom: '▼', left: '◀', right: '▶' }[dirOf[g.turn]] || '';
 
-  return `<div class="table">
-    <div class="z-top">${zone(g, at.top, 'wide', me)}</div>
-    <div class="z-left">${zone(g, at.left, 'narrow', me)}</div>
-    <div class="z-hub hubwrap">
+  return `<div class="flat">
+    ${DIRS.map((dir) => fband(g, at[dir], dir)).join('')}
+    <div class="f-hub hubwrap">
       <div class="hub compact">
         ${g.doraIndicators?.length ? `<div class="dora">${g.doraIndicators.map((t) => tileEl(t)).join('')}</div>` : ''}
         <div class="last">${esc(g.log[g.log.length - 1]?.msg || '')}</div>
       </div>
       ${arrow ? `<div class="arrow a-${dirOf[g.turn]}">${arrow}</div>` : ''}
     </div>
-    <div class="z-right">${zone(g, at.right, 'narrow', me)}</div>
-    <div class="z-bottom">${zone(g, at.bottom, 'wide', me)}</div>
+  </div>
+  <div class="plates">${DIRS.map((dir) => plate(g, at[dir], dir, true)).join('')}</div>`;
+}
+
+/* Wall first, then the rest: the stylesheet reverses the two bands whose edge is
+   the far side of the box, so the same pieces read edge-inwards for all four.
+   Melds ride with the pond rather than between the wall and it — beside the
+   middle they would cost the ponds three tiles of width each, and width is what
+   the side bands are short of. */
+function fband(g, seat, dir) {
+  const side = dir === 'left' || dir === 'right';
+  const { pond, melds, wall } = seatParts(g, seat, side);
+  return `<div class="fband f-${dir}">
+    ${wall}
+    <div class="fgroup">
+      ${melds ? `<div class="fmelds">${melds}</div>` : ''}
+      <div class="pond">${pond}</div>
+    </div>
   </div>`;
 }
 
@@ -451,7 +473,7 @@ function arenaTable(g, at) {
    strips get that corner back — worth about 70% more room along the edge. */
 const CORNER = { bottom: 'bl', right: 'br', top: 'tr', left: 'tl' };
 
-function plate(g, seat, dir) {
+function plate(g, seat, dir, withScore = false) {
   const s = sync.room.seats[seat];
   const chips = [
     g.dealer === seat ? '<span class="chip cjk">莊</span>' : '',
@@ -463,11 +485,14 @@ function plate(g, seat, dir) {
   return `<div class="nplate c-${CORNER[dir]} ${g.turn === seat && g.phase !== 'hand-over' ? 'turn' : ''} ${seat === g.seat ? 'me' : ''}">
     <span class="wind cjk">${WINDS[windOf(seat, g.dealer)]}</span>
     <span class="nm">${esc(s.name || '—')}</span>
+    ${withScore ? `<span class="sc num ${g.scores[seat] < 0 ? 'neg' : ''}">${g.scores[seat]}</span>` : ''}
     ${chips}
   </div>`;
 }
 
-function band(g, seat, dir) {
+/* One seat's three pieces of table. Both layouts want the same three and differ
+   only in how they wrap them, so they are built once here. */
+function seatParts(g, seat, turnedWall = false) {
   const newest = g.river[g.river.length - 1];
   const pond = g.river
     .filter((d) => d.seat === seat)
@@ -487,13 +512,18 @@ function band(g, seat, dir) {
   // your own wall is the hand in the footer; everyone else shows backs. The
   // propped-up table has no hand of its own, so it shows all four — including
   // when it is opened in the same browser as a seat, which hands it that token.
-  const backs = seat === g.seat && !TABLE_VIEW ? ''
-    : `<div class="backs">${Array.from({ length: g.handCounts[seat] }, () => tileEl(0, { back: true })).join('')}</div>`;
+  const wall = seat === g.seat && !TABLE_VIEW ? ''
+    : `<div class="backs">${Array.from({ length: g.handCounts[seat] },
+      () => tileEl(0, { back: true, turned: turnedWall })).join('')}</div>`;
+  return { pond, melds, wall };
+}
 
+function band(g, seat, dir) {
+  const { pond, melds, wall } = seatParts(g, seat);
   return `<div class="band b-${dir}">
     <div class="pond">${pond}</div>
     <div class="bandedge">
-      <div class="bcontent">${backs}${melds ? `<div class="bmelds">${melds}</div>` : ''}</div>
+      <div class="bcontent">${wall}${melds ? `<div class="bmelds">${melds}</div>` : ''}</div>
     </div>
   </div>`;
 }
@@ -518,12 +548,10 @@ function centre(g, at) {
   </div>`;
 }
 
-/* The table's grid rows are `auto`, so they grow with the ponds while the table
-   box itself is capped by the flex layout. Late in a hand — 18 discards each
-   plus melds — the rows outgrow the box: the middle row collapses, the hub gets
-   painted over by the bottom pond, and the last rows fall off the bottom edge.
-   CSS cannot size tiles from "how many rows the content happens to need", so
-   measure what the rows want and shrink --dw until they fit. */
+/* Neither table can be sized by CSS alone: how big a tile fits depends on how
+   many rows the ponds happen to have wrapped to, which is not a thing a
+   stylesheet can ask. Both layouts therefore get their tile size measured out
+   here, between the two bounds a tile is worth drawing at. */
 const MIN_DW = 10;
 const MAX_DW = 64;
 
@@ -612,40 +640,62 @@ function fitArena() {
   }
 }
 
-function tableNeed(table) {
-  const h = (sel) => { const el = table.querySelector(sel); return el ? el.getBoundingClientRect().height : 0; };
-  // the middle grid row is as tall as the tallest of its three cells
-  const middle = Math.max(h('.z-left'), h('.z-right'), h('.z-hub'));
-  const cs = getComputedStyle(table);
-  return h('.z-top') + middle + h('.z-bottom') + (parseFloat(cs.rowGap) || 0) * 2;
-}
+/* Discards to a row: near seats first, side seats second. Which shape suits a
+   board is not something you can read off its proportions — it turns on how
+   many rows each pond has wrapped to and how much the melds have taken — so try
+   a few and keep whichever affords the biggest tile. A shape that cannot beat
+   the champion at the champion's own size is dropped after one measurement, so
+   the search costs about one bisection rather than five. */
+const POND_SHAPES = [[6, 5], [8, 6], [10, 6], [6, 4], [5, 3]];
+let flatShape = POND_SHAPES[0];              // last winner, tried first and kept on ties
 
+/* The flat table shrink-wraps its content, so — unlike the arena, whose side is
+   a straight line in --dw that can be solved outright — its size is whatever the
+   grid happens to work out to: bands that wrap, a hub with clamped text, four
+   ponds that gain a row at their own moments. So bisect instead of solve. The
+   box is monotonic in the tile size (bigger tiles are bigger, and they wrap the
+   ponds into more rows besides), so the predicate flips exactly once and every
+   bisection lands on a size that fits both axes. */
 function fitFlatTable() {
-  const table = $('board')?.querySelector('.table');
-  if (!table) return;
-  table.style.removeProperty('--dw');          // start from the CSS ideal each time
-  const cs = getComputedStyle(table);
-  const avail = table.clientHeight - (parseFloat(cs.paddingTop) || 0) - (parseFloat(cs.paddingBottom) || 0);
-  if (avail <= 0) return;
-  if (tableNeed(table) <= avail) return;        // the common case: no work to do
+  const board = $('board');
+  const flat = board?.querySelector('.flat');
+  if (!flat) return;
+  const cs = getComputedStyle(board);
+  const availW = board.clientWidth - (parseFloat(cs.paddingLeft) || 0) - (parseFloat(cs.paddingRight) || 0);
+  const availH = board.clientHeight - (parseFloat(cs.paddingTop) || 0) - (parseFloat(cs.paddingBottom) || 0);
+  if (availW <= 0 || availH <= 0) return;
 
-  // --dw computes to an unresolved clamp() token, so read the ideal size off a
-  // real tile. No tiles yet means nothing that can overflow.
-  const probe = table.querySelector('.pond .tile:not(.turned)') || table.querySelector('.zmelds .tile');
-  const ideal = probe ? probe.getBoundingClientRect().width : 0;
-  if (!(ideal > MIN_DW)) return;
+  const shape = ([cols, scols]) => {
+    flat.style.setProperty('--cols', cols);
+    flat.style.setProperty('--scols', scols);
+  };
+  const fits = (dw) => {
+    flat.style.setProperty('--dw', `${dw.toFixed(1)}px`);
+    return flat.offsetWidth <= availW && flat.offsetHeight <= availH;
+  };
 
-  // Bisect for the largest tile that still fits. Height is monotonic in tile
-  // size, so this always lands on a fitting value — unlike stepping by the
-  // overflow ratio, which under-corrects (plates and gaps do not scale) and
-  // then has to give up at the floor.
-  let lo = MIN_DW, hi = ideal, best = MIN_DW;
-  for (let i = 0; i < 7 && hi - lo > 0.4; i++) {
-    const mid = (lo + hi) / 2;
-    table.style.setProperty('--dw', `${mid.toFixed(1)}px`);
-    if (tableNeed(table) <= avail) { best = mid; lo = mid; } else hi = mid;
+  let best = 0, winner = flatShape;
+  const tried = new Set();
+  for (const s of [flatShape, ...POND_SHAPES]) {
+    if (tried.has(String(s))) continue;
+    tried.add(String(s));
+    shape(s);
+    // half a pixel of hysteresis: a shape has to actually be better to take the
+    // table off the one already in front of the players
+    let lo = Math.max(MIN_DW, best + 0.5);
+    if (!fits(lo)) continue;
+    let hi = MAX_DW;
+    if (fits(hi)) { best = hi; winner = s; break; }   // all the room in the world
+    for (let i = 0; i < 7 && hi - lo > 0.4; i++) {
+      const mid = (lo + hi) / 2;
+      if (fits(mid)) lo = mid; else hi = mid;
+    }
+    best = lo;
+    winner = s;
   }
-  table.style.setProperty('--dw', `${best.toFixed(1)}px`);
+  flatShape = winner;
+  shape(winner);
+  fits(best || MIN_DW);
 }
 
 // the fit depends on viewport height, which changes when phone chrome slides
@@ -660,52 +710,6 @@ for (const ev of ['resize', 'orientationchange']) {
     arenaCal.clear();
     requestAnimationFrame(() => { fitPending = false; fitTable(); });
   });
-}
-
-function zone(g, seat, shape, me) {
-  const s = sync.room.seats[seat];
-  const side = shape === 'narrow';
-  const isMe = seat === g.seat;
-  const newest = g.river[g.river.length - 1];
-  const pond = g.river
-    .filter((d) => d.seat === seat)
-    .map((d, i, arr) => {
-      const isNewest = i === arr.length - 1 && d === newest;
-      return tileEl(d.tile, {
-        dim: d.taken,
-        turned: !!d.riichi,
-        ring: isNewest && !d.taken,
-        cls: isNewest && once(`d${g.handNo}:${g.river.length}`) ? 'fresh-discard' : '',
-      });
-    }).join('');
-  const melds = g.melds[seat].map((m, i) => meldHTML(m, true,
-    once(`m${g.handNo}:${seat}:${i}:${m.type}:${m.tile}`) ? 'fresh-meld' : ''))
-    .join('')
-    + g.bonus[seat].map((t) => tileEl(t)).join('');
-
-  // an opponent's concealed hand as tile backs, the way a real table reads —
-  // only landscape has the room, so portrait keeps the numeric badge instead
-  const backs = isMe ? ''
-    : `<div class="backs">${Array.from({ length: g.handCounts[seat] }, () => tileEl(0, { back: true })).join('')}</div>`;
-
-  return `<div class="zone ${side ? 'side' : ''}">
-    ${backs}
-    <div class="zline">
-      <div class="plate ${g.turn === seat && g.phase !== 'hand-over' ? 'turn' : ''} ${isMe ? 'me' : ''}">
-        <span class="wind cjk">${WINDS[windOf(seat, g.dealer)]}</span>
-        <span class="who">${esc(s.name || '—')}</span>
-        <span class="score ${g.scores[seat] < 0 ? 'neg' : ''}">${g.scores[seat]}</span>
-        ${g.dealer === seat ? '<span class="chip cjk">莊</span>' : ''}
-        ${g.riichiSeats?.[seat] ? '<span class="chip riichi cjk">立</span>' : ''}
-        ${s.bot ? '<span class="chip">bot</span>' : ''}
-        ${s.name && !s.connected ? '<span class="chip off">away</span>' : ''}
-        ${g.phase === 'claim' && g.claimPending?.includes(seat) ? '<span class="chip">…</span>' : ''}
-        ${isMe ? '' : `<span class="held">${g.handCounts[seat]}</span>`}
-      </div>
-      ${melds ? `<div class="zmelds">${melds}</div>` : ''}
-      <div class="pond ${side ? 'narrow' : 'wide'}">${pond}</div>
-    </div>
-  </div>`;
 }
 
 function meldHTML(m, compact = false, extra = '') {
