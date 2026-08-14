@@ -375,7 +375,13 @@ function flatTable(g, at) {
    The plate is the one exception — it rides along in the corner but counter-
    rotates its text, because an upside-down name is just unreadable. */
 
-const POND_COLS = 7;
+/* Six to a row, three rows — the reference's ratio, and the shape that buys the
+   most tile for the space (shorter rows need more of them, which pushes the
+   ponds inward and costs more than it saves). The stylesheet is told this
+   number rather than repeating it: when the two drifted apart, the predictor
+   below reserved three rows for a pond that wrapped to four and the last row
+   spilled into the wall strip. */
+const POND_COLS = 6;
 const DIRS = ['bottom', 'right', 'top', 'left'];
 
 /* The pond has a fixed height so the four bands stay the same size, which means
@@ -393,14 +399,37 @@ function pondRows(river, seat) {
 
 function arenaTable(g, at) {
   const prows = Math.max(3, ...[0, 1, 2, 3].map((s) => pondRows(g.river, s)));
-  return `<div class="arena" style="--prows:${prows}">
+  return `<div class="arena" style="--prows:${prows};--cols:${POND_COLS}">
     ${DIRS.map((dir) => band(g, at[dir], dir)).join('')}
     ${centre(g, at)}
+  </div>
+  <div class="plates">${DIRS.map((dir) => plate(g, at[dir], dir)).join('')}</div>`;
+}
+
+/* Names sit outside the table, not on it. On it they had to lie back with
+   everything else, which reads badly on a real phone, and each one reserved a
+   corner of its band that the wall and melds then had to squeeze around. Out
+   here they are upright, they float in the felt the table does not use, and the
+   strips get that corner back — worth about 70% more room along the edge. */
+const CORNER = { bottom: 'bl', right: 'br', top: 'tr', left: 'tl' };
+
+function plate(g, seat, dir) {
+  const s = sync.room.seats[seat];
+  const chips = [
+    g.dealer === seat ? '<span class="chip cjk">莊</span>' : '',
+    g.riichiSeats?.[seat] ? '<span class="chip riichi cjk">立</span>' : '',
+    s.bot ? '<span class="chip">bot</span>' : '',
+    s.name && !s.connected ? '<span class="chip off">away</span>' : '',
+    g.phase === 'claim' && g.claimPending?.includes(seat) ? '<span class="chip">…</span>' : '',
+  ].filter(Boolean).join('');
+  return `<div class="nplate c-${CORNER[dir]} ${g.turn === seat && g.phase !== 'hand-over' ? 'turn' : ''} ${seat === g.seat ? 'me' : ''}">
+    <span class="wind cjk">${WINDS[windOf(seat, g.dealer)]}</span>
+    <span class="nm">${esc(s.name || '—')}</span>
+    ${chips}
   </div>`;
 }
 
 function band(g, seat, dir) {
-  const s = sync.room.seats[seat];
   const newest = g.river[g.river.length - 1];
   const pond = g.river
     .filter((d) => d.seat === seat)
@@ -422,23 +451,10 @@ function band(g, seat, dir) {
   // when it is opened in the same browser as a seat, which hands it that token.
   const backs = seat === g.seat && !TABLE_VIEW ? ''
     : `<div class="backs">${Array.from({ length: g.handCounts[seat] }, () => tileEl(0, { back: true })).join('')}</div>`;
-  const chips = [
-    g.dealer === seat ? '<span class="chip cjk">莊</span>' : '',
-    g.riichiSeats?.[seat] ? '<span class="chip riichi cjk">立</span>' : '',
-    s.bot ? '<span class="chip">bot</span>' : '',
-    s.name && !s.connected ? '<span class="chip off">away</span>' : '',
-    g.phase === 'claim' && g.claimPending?.includes(seat) ? '<span class="chip">…</span>' : '',
-  ].filter(Boolean).join('');
 
   return `<div class="band b-${dir}">
     <div class="pond">${pond}</div>
     <div class="bandedge">
-      <div class="nplate ${g.turn === seat && g.phase !== 'hand-over' ? 'turn' : ''} ${seat === g.seat ? 'me' : ''}">
-        <div class="nin">
-          <div class="nm">${esc(s.name || '—')}</div>
-          ${chips ? `<div class="chips">${chips}</div>` : ''}
-        </div>
-      </div>
       <div class="bcontent">${backs}${melds ? `<div class="bmelds">${melds}</div>` : ''}</div>
     </div>
   </div>`;
@@ -471,7 +487,7 @@ function centre(g, at) {
    CSS cannot size tiles from "how many rows the content happens to need", so
    measure what the rows want and shrink --dw until they fit. */
 const MIN_DW = 10;
-const MAX_DW = 46;
+const MAX_DW = 64;
 
 function fitTable() {
   if ($('board')?.querySelector('.arena')) return fitArena();
@@ -508,7 +524,7 @@ function arenaCalibrate(arena, prows) {
    the angle with how much: none in portrait, the full tilt on a landscape
    phone. Below a few degrees it reads as a mistake rather than a viewpoint, so
    that range snaps to flat. */
-const TILT_MAX = 38;
+const TILT_MAX = 50;
 const TILT_MIN = 8;
 
 function arenaTilt(availW, availH) {
@@ -646,9 +662,9 @@ function zone(g, seat, shape, me) {
         ${s.bot ? '<span class="chip">bot</span>' : ''}
         ${s.name && !s.connected ? '<span class="chip off">away</span>' : ''}
         ${g.phase === 'claim' && g.claimPending?.includes(seat) ? '<span class="chip">…</span>' : ''}
+        ${isMe ? '' : `<span class="held">${g.handCounts[seat]}</span>`}
       </div>
       ${melds ? `<div class="zmelds">${melds}</div>` : ''}
-      ${isMe ? '' : `<span class="held">${g.handCounts[seat]}</span>`}
       <div class="pond ${side ? 'narrow' : 'wide'}">${pond}</div>
     </div>
   </div>`;

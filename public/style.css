@@ -285,6 +285,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  position: relative;                  /* anchor for the floating name plates */
 }
 .board > .table { flex: 1 1 auto; min-height: 0; }
 
@@ -426,7 +427,7 @@ body.claiming .mine .hint { display: none; }
 .table {
   /* sized from the viewport so the whole table always fits without scrolling —
      the vh term is what stops the bottom player falling off a laptop screen */
-  --dw: clamp(16px, min(6.2vw, 3.6vh), 34px);
+  --dw: clamp(16px, min(6.8vw, 5vh), 40px);
   --dh: calc(var(--dw) * 1.4);
   display: grid;
   grid-template-columns: minmax(58px, auto) minmax(0, 1fr) minmax(58px, auto);
@@ -536,17 +537,21 @@ body.claiming .mine .hint { display: none; }
 .pond .tile.dim { opacity: 0.34; }
 .pond .tile.ring { outline: 2px solid var(--brass); outline-offset: 1px; border-radius: 3px; }
 
-/* melds shown beside each player */
+/* Melds beside each player, drawn smaller than the discards. They are reference
+   rather than reading matter, and in this layout they are what actually sets
+   the table's height: at full tile size a seat with three melds wraps to three
+   rows and the whole table shrinks to pay for it. */
 .zmelds { display: flex; gap: 3px; flex-wrap: wrap; justify-content: center; }
-.zmelds .tile { width: var(--dw, 20px); filter: none; }
+.zmelds .tile { width: calc(var(--dw, 20px) * 0.78); filter: none; }
 .zone.side .zmelds { max-width: calc(5 * var(--dw) + 6px); }
+/* rides in the name plate rather than taking a line of its own */
 .held {
   font-family: var(--num);
   font-size: 10px;
   color: #8fb6a8;
-  background: rgba(0, 0, 0, 0.25);
+  background: rgba(0, 0, 0, 0.3);
   border-radius: 4px;
-  padding: 1px 5px;
+  padding: 0 4px;
 }
 
 /* the hub */
@@ -599,19 +604,20 @@ body.claiming .mine .hint { display: none; }
   --dh: calc(var(--dw) * 1.4);
   --gap: 1px;
   --prows: 3;                                  /* pond rows, set by the renderer */
-  /* 6 × 3, and the slab in the middle is exactly as wide as a pond row — the
-     ratio Mahjong Soul uses. It was 7, which bought three more discards of
-     headroom and spent the whole table's tile size on them. */
+  /* Discards to a row. The renderer sets this inline from POND_COLS, which is
+     also what predicts how many rows to reserve — the two must never disagree.
+     This is only the fallback for a table drawn before that lands. */
   --cols: 6;
   --ring: calc(var(--cols) * (var(--dw) + var(--gap)));
   --pondh: calc(var(--prows) * (var(--dh) + var(--gap)));
   --bedge: calc(var(--dw) * 1.18);             /* wall + melds strip */
   --blk: calc(var(--pondh) + var(--bedge) + 4px);
   --S: calc(var(--ring) + 2 * var(--blk));
-  /* the corner a plate gets: the band's depth, less the neighbouring band's
-     strip, which crosses every corner on its way past */
-  --npw: calc(var(--blk) - var(--bedge) - 5px);
-  --nph: clamp(26px, calc(var(--dw) * 2.5), 46px);
+  /* the slab is drawn inside the hole the four ponds ring rather than filling
+     it. The hole is one pond row across and cannot be made smaller — shorter
+     rows need more of them, which pushes the ponds inward and costs more than
+     it saves — so the way to a compact middle is to leave felt around it. */
+  --hubw: calc(var(--ring) * 0.74);
 
   /* Tilted away from the viewer, the way both reference games draw the table.
      This is not decoration: landscape has width to spare and no height, and a
@@ -624,7 +630,7 @@ body.claiming .mine .hint { display: none; }
      the perspective looks the same on a phone as on a laptop — and, handily,
      that makes the projection a pure scale of --S, so the fit stays solvable. */
   --tilt: 0deg;
-  --persp: calc(var(--S) * 3.2);
+  --persp: calc(var(--S) * 2);
   --shift: 0px;
   transform: translateY(var(--shift)) perspective(var(--persp)) rotateX(var(--tilt));
 
@@ -689,11 +695,13 @@ body.claiming .mine .hint { display: none; }
   width: 100%;
   height: var(--bedge);
 }
-/* Held back from both corners by exactly one plate's width: the near corner is
-   this seat's own plate, the far one belongs to the seat around the turn. */
+/* Held back only by the depth of the neighbouring band's own strip, which
+   crosses this band's corners on its way past. That is all the clearance the
+   corners need now the names have moved off the table, and it leaves the wall
+   and melds most of the table's edge to spread along. */
 .bcontent {
   height: 100%;
-  padding: 0 var(--npw);
+  padding: 0 var(--bedge);
   display: flex;
   align-items: flex-end;
   justify-content: center;
@@ -702,74 +710,74 @@ body.claiming .mine .hint { display: none; }
 /* `flex` is spelled out rather than left to the default: the flat layout's
    landscape block also styles .backs, and its `flex: 0 0 auto` would otherwise
    leak in here — shrink 0, so a 17-tile Taiwanese wall stops shrinking and
-   spills straight into the corner plates, but only in landscape. */
+   spills straight past the edge of the table, but only in landscape. */
 .arena .backs { display: flex; gap: 1px; align-items: flex-end; flex: 0 1 auto; min-width: 0; }
-.arena .backs .tile { width: calc(var(--dw) * 0.58); filter: none; flex: 0 1 auto; min-width: 0; }
-.bmelds { display: flex; gap: calc(var(--dw) * 0.2); align-items: flex-end; min-width: 0; }
+.arena .backs .tile { width: calc(var(--dw) * 0.74); filter: none; flex: 0 1 auto; min-width: 0; }
+.bmelds { display: flex; gap: calc(var(--dw) * 0.2); align-items: flex-end; flex: 0 1 auto; min-width: 0; }
 .bmelds .meld { gap: 1px; padding-right: 0; min-width: 0; }
-/* four kongs plus a wall is more than the strip can hold at full size; let the
-   tiles squeeze rather than run into the plates */
-.bmelds .tile { width: calc(var(--dw) * 0.7); filter: none; flex: 0 1 auto; min-width: 0; }
+/* a full Taiwanese wall alongside four kongs still outruns the edge; let the
+   tiles squeeze rather than spill past the table */
+.bmelds .tile { width: calc(var(--dw) * 0.82); filter: none; flex: 0 1 auto; min-width: 0; }
 
-/* The plate rides in its band, so it lands in that seat's own corner and can
-   never collide with the wall or the melds. Only its contents counter-rotate:
-   position should follow the seat, but an upside-down name reads as nothing. */
-.nplate {
+/* Names float in the felt around the table rather than sitting on it. Anchored
+   to the board's own corners, which is where the table is not: landscape leaves
+   gutters either side of the tilted square, portrait leaves bands above and
+   below. Each seat keeps the corner on its own left, so the four pinwheel round
+   the table the same way the melds do. */
+.plates {
   position: absolute;
-  left: 0;
-  bottom: 0;
-  width: var(--npw);
-  height: var(--nph);
+  inset: 0;
+  pointer-events: none;
+  z-index: 4;
 }
-.b-left .nplate, .b-right .nplate { width: var(--nph); height: var(--npw); }
-.nplate .nin {
+.plates .nplate {
   position: absolute;
-  left: 50%;
-  top: 50%;
-  /* the corner grows with the tiles; the name does not need to follow it all
-     the way up on a propped-up laptop */
-  width: min(var(--npw), 140px);
-  transform: translate(-50%, -50%) rotate(var(--crot, 0deg));
-  padding: 3px 5px;
-  border-radius: 7px;
-  background: rgba(0, 0, 0, 0.42);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  text-align: center;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  max-width: min(42%, 190px);
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: rgba(3, 20, 17, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.5);
 }
-.b-top .nplate { --crot: 180deg; }
-.b-left .nplate { --crot: -90deg; }
-.b-right .nplate { --crot: 90deg; }
+.c-bl { left: 4px; bottom: 4px; }
+.c-br { right: 4px; bottom: 4px; }
+.c-tr { right: 4px; top: 4px; }
+.c-tl { left: 4px; top: 4px; }
+.nplate .wind { font-family: var(--cjk); color: var(--brass); font-size: 14px; line-height: 1; flex: 0 0 auto; }
 .nplate .nm {
-  font-size: clamp(9px, calc(var(--dw) * 0.62), 14px);
-  line-height: 1.25;
+  font-size: 12px;
+  line-height: 1.2;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.nplate .chips { display: flex; flex-wrap: wrap; gap: 2px; justify-content: center; margin-top: 2px; }
-.nplate.turn .nin {
+.nplate .chip { flex: 0 0 auto; }
+.nplate.turn {
   border-color: var(--brass);
-  background: rgba(203, 156, 62, 0.18);
+  background: rgba(72, 55, 22, 0.9);
   animation: turnGlow 2.2s ease-in-out infinite;
 }
-.nplate.me .nin { box-shadow: inset 0 0 0 1px rgba(203, 156, 62, 0.4); }
+.nplate.me { box-shadow: 0 6px 16px rgba(0, 0, 0, 0.5), inset 0 0 0 1px rgba(203, 156, 62, 0.45); }
 
 /* the slab in the middle: round and wall in the centre, the four scores around
    the rim turned to face their own seats, the seat to play lit */
 .chub {
-  --hs: clamp(15px, calc(var(--ring) * 0.21), 30px);
-  --hf: clamp(8px, calc(var(--ring) * 0.098), 15px);
+  --hs: clamp(14px, calc(var(--hubw) * 0.24), 32px);
+  --hf: clamp(8px, calc(var(--hubw) * 0.125), 16px);
   position: absolute;
   left: 50%;
   top: 50%;
   transform: translate(-50%, -50%);
-  width: var(--ring);
-  height: var(--ring);
+  width: var(--hubw);
+  height: var(--hubw);
   z-index: 2;
   display: grid;
   grid-template-columns: var(--hs) minmax(0, 1fr) var(--hs);
   grid-template-rows: var(--hs) minmax(0, 1fr) var(--hs);
-  border-radius: calc(var(--ring) * 0.09);
+  border-radius: calc(var(--hubw) * 0.11);
   background: linear-gradient(160deg, rgba(6, 30, 25, 0.95), rgba(3, 18, 15, 0.96));
   border: 1px solid rgba(203, 156, 62, 0.3);
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
@@ -820,11 +828,11 @@ body.claiming .mine .hint { display: none; }
   gap: 0.12em;
   line-height: 1;
   color: var(--brass);
-  font-size: clamp(15px, calc(var(--ring) * 0.235), 40px);
+  font-size: clamp(15px, calc(var(--hubw) * 0.3), 44px);
 }
 .chub .rw .cjk { font-family: var(--cjk); }
 .chub .rw i { font-style: normal; font-size: 0.62em; font-weight: 600; }
-.chub .wl { font-size: clamp(8px, calc(var(--ring) * 0.105), 17px); font-weight: 600; color: #cfe3da; }
+.chub .wl { font-size: clamp(8px, calc(var(--hubw) * 0.135), 18px); font-weight: 600; color: #cfe3da; }
 
 /* dora and the running commentary, homeless now the middle belongs to the table */
 .rail .raildora { display: flex; gap: 2px; flex: 0 0 auto; }
@@ -868,7 +876,7 @@ body.claiming .mine .hint { display: none; }
   .table {
     /* aim high and let fitTable() bisect it down — landscape has far more
        width than height, so a height-only clamp badly under-uses the board */
-    --dw: clamp(12px, min(3.2vw, 6.8vh), 30px);
+    --dw: clamp(12px, min(3.6vw, 9.5vh), 38px);
     grid-template-columns: auto auto auto;
     grid-template-rows: auto 1fr auto;
     place-content: center;
@@ -920,7 +928,7 @@ body.claiming .mine .hint { display: none; }
   .plate .wind { font-size: 12px; }
   .pond.wide { width: calc(10 * var(--dw) + 18px); }
   .pond.narrow { width: calc(6 * var(--dw) + 10px); }
-  .zone.side .zmelds { max-width: calc(3 * var(--dw) + 4px); }
+  .zone.side .zmelds { max-width: calc(4.5 * var(--dw) + 4px); }
   .held { display: none; }
 
   /* opponents' concealed hands, as tile backs. Always a horizontal strip above
