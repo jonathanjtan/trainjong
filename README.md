@@ -63,8 +63,19 @@ Port taken? `node server.js 9000` or `PORT=9000 node server.js`.
 - **Vibration** on your turn and on a claim prompt (`buzz` in the top bar).
   Android only — iOS Safari has no vibration API, which is why the chime exists
   too.
+- **The table is drawn as a table.** Discards pool in the middle in four blocks,
+  and every tile a player owns — their discards, their concealed wall, their
+  melds — is turned to face that player, the way it sits on a real table (and
+  the way Mahjong Soul and friends draw it). The middle slab carries the round,
+  the wall count and the four scores, each score turned towards its own seat,
+  with the seat to play lit. Names stay upright in the corners.
+- **`simple` in the top bar** flattens all that back to the older layout: every
+  seat upright, ponds beside their player rather than pooled. It sticks per
+  browser, so one player can use it without affecting the table.
 - **Landscape works**, and so does a zoomed-in laptop: the layout is sized from
-  the viewport, so the table and your hand always fit without scrolling.
+  the viewport, so the table and your hand always fit without scrolling. The
+  table is square and sized to the shorter edge, so on a wide screen it sits
+  centred with felt either side.
 - **`?view=table` is full screen** — the `full` button in the top bar goes
   properly fullscreen if the browser allows it.
 - **How to play**: the `?` button in the top bar opens a guide — the basics,
@@ -98,6 +109,25 @@ changes needed.
 Layout: `src/` engine (tiles → hand logic → per-variant scorers → game state
 machine), `server.js` HTTP + hand-rolled RFC 6455 WebSocket + rooms,
 `public/` the client (vanilla ES modules, inline-SVG tiles).
+
+The table itself is worth knowing about before you edit `.arena` in
+`public/style.css`. One seat's band — pond, wall, melds, plate — is written for
+the bottom player and the other three are that same band rotated 90/180/270°
+about the square's centre, so the four sides cannot disagree. Two things hold
+it together:
+
+- **Every length is `n × --dw + n px`.** That makes the square's side a straight
+  line in `--dw`, which `fitArena()` solves by rendering two probe sizes and
+  measuring — no duplicated arithmetic in the JS. A `clamp()` or `min()`
+  anywhere in the `--S` chain breaks the solve and the table stops fitting.
+- **No `border` on `.arena`.** `box-sizing` is `border-box` everywhere, so a
+  border shrinks the content box and the rotation centre the bands are spun
+  about lands a pixel off — which shows up as all four sides being out of true.
+  The rim is an inset `box-shadow` for that reason.
+
+The ponds are a fixed number of rows so the bands stay the same size all hand;
+`pondRows()` predicts what flex wrap will do (a sideways riichi tile is 1.4
+columns wide) and must never under-reserve.
 
 `jonathanjtan/trainjong` was empty at build time; when it grows code, a new
 variant is a data object in `src/variants.js` plus one scorer function.
