@@ -74,10 +74,13 @@ body {
   /* Firefox will not infer height from the viewBox reliably; be explicit */
   aspect-ratio: 60 / 84;
 }
-.t-xs { width: 24px; }
-.t-sm { width: 32px; }
-.t-md { width: 42px; }
-.t-lg { width: 52px; }
+.t-xs { width: 28px; }
+.t-sm { width: 38px; }
+.t-md { width: 50px; }
+.t-lg { width: 62px; }
+/* 'zone' tiles are sized by whatever context they sit in (.rack, .zmelds,
+   .handmelds). This is the backstop so one that escapes cannot balloon. */
+.t-zone { width: 26px; }
 
 .tile-face { fill: var(--ivory); stroke: var(--ivory-edge); stroke-width: 1.4; }
 .tile-inner { fill: none; stroke: rgba(23, 18, 13, 0.09); stroke-width: 1; }
@@ -124,6 +127,69 @@ body {
 }
 .tile.drawn { margin-left: 10px; }
 .tile.pick { cursor: pointer; }
+.tile.pick:active { transform: translateY(-5px); }
+.tile.sel:active { transform: translateY(-18px); }
+
+/* --------------------------------------------------------------- motion */
+/* Every one of these is applied by JS only on the render where the thing is
+   actually new (see once() in app.js) — the board is rebuilt on every sync, so
+   an unguarded animation would replay on the whole pond several times a turn. */
+
+/* `backwards`, never `forwards`/`both`: a held final keyframe outranks ordinary
+   declarations in the cascade, so it would pin the transform and stop .sel from
+   ever lifting the tile again. Every one of these ends at the resting state. */
+
+/* a tile you just drew slides up into the rack */
+.tile.fresh-draw { animation: dealIn 260ms cubic-bezier(0.2, 0.9, 0.3, 1.1) backwards; }
+@keyframes dealIn {
+  from { transform: translateY(14px) scale(0.86); opacity: 0; }
+  to { transform: translateY(0) scale(1); opacity: 1; }
+}
+
+/* the tile someone just discarded drops onto the table */
+.tile.fresh-discard { animation: dropIn 240ms cubic-bezier(0.25, 0.8, 0.3, 1.2) backwards; }
+@keyframes dropIn {
+  from { transform: translateY(-12px) scale(1.28); opacity: 0; }
+  60% { opacity: 1; }
+  to { transform: translateY(0) scale(1); opacity: 1; }
+}
+
+/* a meld that was just claimed flashes brass once so you see who took it */
+.meld.fresh-meld { animation: claimFlash 620ms ease-out backwards; border-radius: 5px; }
+@keyframes claimFlash {
+  0% { box-shadow: 0 0 0 2px var(--brass), 0 0 16px rgba(203, 156, 62, 0.75); transform: scale(1.12); }
+  55% { box-shadow: 0 0 0 2px var(--brass), 0 0 10px rgba(203, 156, 62, 0.4); transform: scale(1); }
+  100% { box-shadow: 0 0 0 0 rgba(203, 156, 62, 0); transform: scale(1); }
+}
+
+/* the discard under consideration in the claim tray keeps breathing */
+.tray .head .tile { animation: offerPulse 1.5s ease-in-out infinite; }
+@keyframes offerPulse {
+  0%, 100% { transform: translateY(0); filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.35)); }
+  50% { transform: translateY(-3px); filter: drop-shadow(0 6px 8px rgba(203, 156, 62, 0.45)); }
+}
+
+/* sheets and the winning hand */
+.sheet .sheet-inner { animation: sheetIn 220ms ease-out backwards; }
+@keyframes sheetIn {
+  from { transform: translateY(14px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+.result-hand .tile, .result-hand .meld { animation: dealIn 300ms ease-out backwards; }
+.deltas > div { animation: sheetIn 320ms ease-out backwards; }
+.deltas > div:nth-child(1) { animation-delay: 60ms; }
+.deltas > div:nth-child(2) { animation-delay: 120ms; }
+.deltas > div:nth-child(3) { animation-delay: 180ms; }
+.deltas > div:nth-child(4) { animation-delay: 240ms; }
+
+/* it is your turn: the plate and the whole table edge acknowledge it */
+.plate.turn { animation: turnGlow 2.2s ease-in-out infinite; }
+@keyframes turnGlow {
+  0%, 100% { box-shadow: 0 0 10px rgba(203, 156, 62, 0.18); }
+  50% { box-shadow: 0 0 18px rgba(203, 156, 62, 0.42); }
+}
+
+/* (prefers-reduced-motion turns all of this off — see the end of the file) */
 
 /* ------------------------------------------------------------------ layout */
 
@@ -230,7 +296,8 @@ body {
    (14 or 17), not the concealed count — otherwise tiles balloon as you meld. */
 .handrow {
   --slots: 14;
-  --tw: clamp(15px, min(calc((100vw - 26px) / var(--slots)), 11vh), 44px);
+  --rowslots: 7;
+  --tw: clamp(15px, min(calc((100vw - 26px) / var(--slots)), 11vh), 46px);
   display: flex;
   align-items: flex-end;
   justify-content: center;
@@ -252,6 +319,26 @@ body {
 .handmelds .tile { width: calc(var(--tw) * 0.82); }
 @media (min-width: 700px) {
   .handrow { --tw: clamp(20px, min(calc(880px / var(--slots)), 9vh), 50px); }
+}
+
+/* Portrait phones: 14 tiles across a 390px screen works out to ~26px each no
+   matter how the clamp is written — that is the squinting. Wrapping the rack
+   onto two rows is what actually buys the size back (26px -> 42px). --rowslots
+   comes from renderMine so a Taiwanese 17-tile hand splits evenly too. */
+@media (orientation: portrait) and (max-width: 640px) {
+  .handrow {
+    --tw: clamp(22px, min(calc((100vw - 20px) / var(--rowslots)), 8.6vh), 42px);
+    flex-wrap: wrap;
+    min-height: 0;
+    padding: 10px 0 6px;
+  }
+  /* cap the row so exactly --rowslots fit before flex wraps, keeping the two
+     rows even rather than letting the first row grab 8 and the second 6. The
+     +8px is headroom for the drawn tile's gap, which would otherwise bump that
+     one tile onto a third row all by itself. */
+  .rack { flex-wrap: wrap; row-gap: 4px; max-width: calc(var(--rowslots) * (var(--tw) + 2px) + 8px); }
+  .rack .tile.drawn { margin-left: 6px; }
+  .handmelds { width: 100%; justify-content: center; }
 }
 .hint { text-align: center; font-size: 11px; color: #9dc3b5; min-height: 15px; }
 .hint b { color: var(--brass); }
@@ -316,7 +403,7 @@ body.claiming .mine .hint { display: none; }
 .table {
   /* sized from the viewport so the whole table always fits without scrolling —
      the vh term is what stops the bottom player falling off a laptop screen */
-  --dw: clamp(13px, min(5vw, 3.1vh), 30px);
+  --dw: clamp(16px, min(6.2vw, 3.6vh), 34px);
   --dh: calc(var(--dw) * 1.4);
   display: grid;
   grid-template-columns: minmax(58px, auto) minmax(0, 1fr) minmax(58px, auto);
@@ -433,7 +520,7 @@ body.claiming .mine .hint { display: none; }
 .hub .wall { font-family: var(--num); font-size: 13px; font-weight: 600; }
 .hub .wall span { font-size: 10px; font-weight: 400; color: #8fb6a8; }
 .hub .dora { display: flex; gap: 2px; }
-.hub .dora .tile { width: 20px; filter: none; }
+.hub .dora .tile { width: 24px; filter: none; }
 .hub .last { font-size: 10px; color: #9dc3b5; text-align: center; max-width: 132px; line-height: 1.3; }
 .hub .arrow {
   position: absolute;
@@ -462,7 +549,7 @@ body.claiming .mine .hint { display: none; }
   .rail .round { font-size: 16px; }
   .rail .eyebrow { font-size: 10px; }
   .board { padding: 3px 6px 4px; gap: 4px; }
-  .table { --dw: clamp(11px, 2.05vh, 22px); gap: 3px; padding: 3px; border-radius: 10px; }
+  .table { --dw: clamp(14px, 2.6vh, 26px); gap: 3px; padding: 3px; border-radius: 10px; }
   .plate { padding: 2px 6px; gap: 4px; }
   .plate .who { font-size: 10px; max-width: 60px; }
   .plate .wind { font-size: 12px; }
@@ -519,7 +606,7 @@ body.claiming .mine .hint { display: none; }
 }
 .bonuscard .mark { font-family: var(--cjk); font-size: 26px; color: var(--brass); }
 .bonuscard .tiles { display: flex; gap: 4px; }
-.bonuscard .tiles .tile { width: 42px; }
+.bonuscard .tiles .tile { width: 52px; }
 .bonuscard .txt { font-size: 12px; line-height: 1.4; min-width: 0; }
 .bonuscard .txt b { display: block; font-size: 14px; }
 .bonuscard .txt span { color: #9dc3b5; }
@@ -559,7 +646,8 @@ body.claiming .mine .hint { display: none; }
 .gsec h3 .cjk { font-family: var(--cjk); font-size: 19px; color: var(--paper); }
 .gsec p { font-size: 13px; line-height: 1.55; margin: 0; color: #cfe3da; }
 .gsec.on { border-left: 2px solid var(--brass); padding-left: 10px; }
-.gtiles { display: flex; gap: 3px; margin: 4px 0 8px; flex-wrap: wrap; }
+.gtiles { display: flex; gap: 4px; margin: 6px 0 10px; flex-wrap: wrap; }
+.gtiles .tile { width: clamp(30px, 8vw, 42px); }
 
 .gpat { width: 100%; }
 .gpat td { padding: 6px 4px; vertical-align: top; }
@@ -675,12 +763,18 @@ input[type=text] {
 .optrow button { padding: 8px 12px; min-height: 40px; font-size: 13px; }
 .optrow button.on { border-color: var(--brass); background: rgba(203, 156, 62, 0.18); }
 
-.result-hand { display: flex; flex-wrap: wrap; gap: 3px; margin: 10px 0; }
+.result-hand { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 4px; margin: 12px 0; }
+/* one size for concealed tiles, melds and flowers alike, whatever size each was
+   asked for — the winning hand is the thing everyone leans in to read */
+.result-hand .tile { width: clamp(30px, 8.2vw, 44px); }
+/* melds are 1px apart inside and 12px apart outside, so four pungs of the same
+   tile read as four sets rather than one long undifferentiated run */
+.result-hand .meld { padding-right: 0; margin-right: 8px; }
 table.pat { width: 100%; border-collapse: collapse; font-size: 13px; }
 table.pat td { padding: 5px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.08); }
 table.pat td.zh { font-family: var(--cjk); width: 30%; color: var(--paper); }
 table.pat td.en { color: #9dc3b5; font-size: 12px; }
-table.pat td.v { text-align: right; font-family: var(--num); color: var(--brass); width: 46px; }
+table.pat td.v { text-align: right; font-family: var(--num); color: var(--brass); width: 46px; white-space: nowrap; }
 table.pat tr.total td { border-bottom: none; font-weight: 700; padding-top: 8px; }
 
 .deltas { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 12px 0; }
@@ -756,9 +850,10 @@ body.table-view .hub .last { font-size: clamp(10px, 1.4vh, 17px); max-width: 260
 @media (min-width: 700px) {
   .board { max-width: 1280px; width: 100%; margin: 0 auto; }
 
-  .t-md { width: 52px; }
-  .t-xs { width: 30px; }
-  .t-sm { width: 38px; }
+  .t-xs { width: 34px; }
+  .t-sm { width: 44px; }
+  .t-md { width: 58px; }
+  .t-lg { width: 70px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

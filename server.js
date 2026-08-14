@@ -369,7 +369,9 @@ function onConnection(conn, req) {
       case 'action': {
         if (p.seat === null || !r.game) return;
         const res = r.game.act(p.seat, m.action);
-        if (res?.error) conn.send({ t: 'error', msg: res.error });
+        // a claim that lost the race is not the player's mistake — their prompt
+        // is about to vanish on its own, so don't shout at them about it
+        if (res?.error && !res.stale) conn.send({ t: 'error', msg: res.error });
         if (r.game.phase === 'claim') r.claimDeadline = null;
         break;
       }
