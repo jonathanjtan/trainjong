@@ -458,8 +458,7 @@ function centre(g, at) {
   return `<div class="chub">
     ${DIRS.map(score).join('')}
     <div class="mid">
-      <div class="rw cjk">${WINDS[g.roundWind]}</div>
-      <div class="hn">hand ${g.handNo}</div>
+      <div class="rw"><span class="cjk">${WINDS[g.roundWind]}</span><i class="num">${g.handNo}</i></div>
       <div class="wl num">×${g.wall}</div>
     </div>
   </div>`;
@@ -481,10 +480,41 @@ function fitTable() {
 
 /* The arena is a square whose side is a straight line in --dw: some multiple of
    the tile size plus a fixed number of pixels of gap. Rather than restate that
-   sum here — where it would rot the moment the CSS changes — set
-   two probe sizes, measure what comes out, and solve the line. The result only
-   depends on how many rows the ponds asked for, so it caches per row count. */
+   sum here — where it would rot the moment the CSS changes — set two probe
+   sizes, measure what comes out, and solve the line. The result only depends on
+   how many rows the ponds asked for, so it caches per row count. Probing is
+   done flat: the layout square is what this line describes, and the tilt is
+   applied to it afterwards. */
 const arenaCal = new Map();
+
+function arenaCalibrate(arena, prows) {
+  const hit = arenaCal.get(prows);
+  if (hit) return hit;
+  const tilt = arena.style.getPropertyValue('--tilt');
+  arena.style.setProperty('--tilt', '0deg');
+  arena.style.setProperty('--dw', '12px');
+  const lo = arena.getBoundingClientRect().width;
+  arena.style.setProperty('--dw', '32px');
+  const hi = arena.getBoundingClientRect().width;
+  arena.style.setProperty('--tilt', tilt);
+  const k = (hi - lo) / 20;
+  if (!(k > 0)) return null;
+  const cal = { k, c: lo - 12 * k };
+  arenaCal.set(prows, cal);
+  return cal;
+}
+
+/* Lay the table back only where there is surplus width to pay for it, and ramp
+   the angle with how much: none in portrait, the full tilt on a landscape
+   phone. Below a few degrees it reads as a mistake rather than a viewpoint, so
+   that range snaps to flat. */
+const TILT_MAX = 38;
+const TILT_MIN = 8;
+
+function arenaTilt(availW, availH) {
+  const t = Math.min(TILT_MAX, Math.max(0, (availW / availH - 1.1) * 45));
+  return t < TILT_MIN ? 0 : t;
+}
 
 function fitArena() {
   const board = $('board');
@@ -493,23 +523,39 @@ function fitArena() {
   const cs = getComputedStyle(board);
   const availW = board.clientWidth - (parseFloat(cs.paddingLeft) || 0) - (parseFloat(cs.paddingRight) || 0);
   const availH = board.clientHeight - (parseFloat(cs.paddingTop) || 0) - (parseFloat(cs.paddingBottom) || 0);
-  const avail = Math.min(availW, availH);
-  if (avail <= 0) return;
+  if (availW <= 0 || availH <= 0) return;
 
-  const prows = arena.style.getPropertyValue('--prows') || '3';
-  let cal = arenaCal.get(prows);
-  if (!cal) {
-    arena.style.setProperty('--dw', '12px');
-    const lo = arena.getBoundingClientRect().width;
-    arena.style.setProperty('--dw', '32px');
-    const hi = arena.getBoundingClientRect().width;
-    const k = (hi - lo) / 20;
-    if (!(k > 0)) { arena.style.setProperty('--dw', '16px'); return; }
-    cal = { k, c: lo - 12 * k };
-    arenaCal.set(prows, cal);
+  const tilt = arenaTilt(availW, availH);
+  arena.style.setProperty('--tilt', `${tilt.toFixed(1)}deg`);
+  arena.style.setProperty('--shift', '0px');
+
+  const cal = arenaCalibrate(arena, arena.style.getPropertyValue('--prows') || '3');
+  if (!cal) { arena.style.setProperty('--dw', '16px'); return; }
+
+  const setSide = (side) => {
+    const dw = Math.max(MIN_DW, Math.min(MAX_DW, (side - cal.c) / cal.k));
+    arena.style.setProperty('--dw', `${dw.toFixed(2)}px`);
+    return arena.getBoundingClientRect();
+  };
+
+  let box = setSide(Math.min(availW, availH));
+  if (tilt) {
+    // Tilted, the square projects to a fixed multiple of itself in each axis —
+    // fixed because the vanishing distance scales with the table. So one
+    // measurement gives the ratio and the fit lands in a single correction; the
+    // second pass is only there to absorb the px rounding in the tile size.
+    for (let i = 0; i < 2; i++) {
+      const side = arena.offsetWidth;
+      const room = Math.min(availW / box.width, availH / box.height);
+      if (room > 0.997 && room < 1.006) break;
+      box = setSide(side * room);
+    }
+    // the projection is not centred on the layout box — the near edge reaches
+    // further down than the far edge reaches up — so put it back in the middle
+    const br = board.getBoundingClientRect();
+    const want = br.top + (parseFloat(cs.paddingTop) || 0) + availH / 2;
+    arena.style.setProperty('--shift', `${(want - (box.top + box.height / 2)).toFixed(1)}px`);
   }
-  const dw = Math.max(MIN_DW, Math.min(MAX_DW, (avail - cal.c) / cal.k));
-  arena.style.setProperty('--dw', `${dw.toFixed(2)}px`);
 }
 
 function tableNeed(table) {
