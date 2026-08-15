@@ -499,6 +499,10 @@ body.claiming .mine .hint { display: none; }
 .f-top .fedge { flex-direction: row-reverse; }
 .f-left .fedge { flex-direction: column; align-items: flex-start; }
 .f-right .fedge { flex-direction: column-reverse; align-items: flex-end; }
+/* A side seat's strip stacked up its edge costs the middle row height; laid out
+   along the edge it costs width instead. Which one a board can afford is what
+   the fit decides — `contents` hands the three pieces straight to the band. */
+.flat.side-row .f-left .fedge, .flat.side-row .f-right .fedge { display: contents; }
 
 /* The concealed hand as one face-down tile with its count on it. Thirteen backs
    in a row say nothing this does not, and they cost the edge the melds want. */
@@ -733,34 +737,48 @@ body.claiming .mine .hint { display: none; }
    tiles squeeze rather than spill past the table */
 .bmelds .tile { width: var(--mw); filter: none; flex: 0 1 auto; min-width: 0; }
 
-/* Names float in the felt around the table rather than sitting on it. Anchored
-   to the board's own corners, which is where the table is not: landscape leaves
-   gutters either side of the tilted square, portrait leaves bands above and
-   below. Each seat keeps the corner on its own left, so the four pinwheel round
-   the table the same way the melds do. */
+/* Names, with the face their owner picked. The arena floats them off the table
+   — on it they would have to lie back with everything else — and hangs each one
+   off the middle of its own seat's edge wherever the tilted square leaves room
+   for it, falling back to that edge's corner where it does not. The flat table
+   has no tilt to dodge, so it carries them in the bands instead. */
 .plates {
   position: absolute;
   inset: 0;
   pointer-events: none;
   z-index: 4;
 }
-.plates .nplate {
-  position: absolute;
+.plates .nplate { position: absolute; }
+/* the fit publishes the table's own box, so the plates can sit against its
+   edges rather than the board's, and clamp to the board when they run out */
+.plates .e-bottom { left: 50%; top: min(calc(50% + var(--tblh, 0px) / 2 + 3px), calc(100% - 44px)); transform: translateX(-50%); }
+.plates .e-top { left: 50%; top: max(calc(50% - var(--tblh, 0px) / 2 - 47px), 2px); transform: translateX(-50%); }
+.plates .e-left { top: 50%; left: max(calc(50% - var(--tblw, 0px) / 2 - 3px - var(--pw, 186px)), 2px); transform: translateY(-50%); }
+.plates .e-right { top: 50%; left: min(calc(50% + var(--tblw, 0px) / 2 + 3px), calc(100% - var(--pw, 186px) - 2px)); transform: translateY(-50%); }
+/* No gutter on that axis: the plate would land on the tiles, so it keeps to the
+   corner of its own edge — each seat's own left, so the four still pinwheel. */
+.plates:not(.vroom) .e-bottom { left: 4px; top: auto; bottom: 4px; transform: none; }
+.plates:not(.vroom) .e-top { left: auto; right: 4px; top: 2px; transform: none; }
+.plates:not(.hroom) .e-left { top: 2px; left: 4px; transform: none; }
+.plates:not(.hroom) .e-right { top: auto; bottom: 4px; left: auto; right: 4px; transform: none; }
+
+.nplate {
   display: flex;
   align-items: center;
-  gap: 5px;
-  max-width: min(42%, 190px);
-  padding: 4px 9px;
+  gap: 6px;
+  max-width: min(46%, 200px);
+  padding: 3px 9px 3px 3px;
   border-radius: 999px;
   background: rgba(3, 20, 17, 0.82);
   border: 1px solid rgba(255, 255, 255, 0.13);
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.5);
 }
-.c-bl { left: 4px; bottom: 4px; }
-.c-br { right: 4px; bottom: 4px; }
-.c-tr { right: 4px; top: 4px; }
-.c-tl { left: 4px; top: 4px; }
-.nplate .wind { font-family: var(--cjk); color: var(--brass); font-size: 14px; line-height: 1; flex: 0 0 auto; }
+.nplate .face { flex: 0 0 auto; width: 30px; line-height: 0; }
+.nplate .face .av-svg { width: 100%; height: auto; display: block; }
+.nplate .who { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.nplate .line { display: flex; align-items: baseline; gap: 4px; min-width: 0; }
+.nplate .line:empty { display: none; }
+.nplate .wind { font-family: var(--cjk); color: var(--brass); font-size: 13px; line-height: 1; flex: 0 0 auto; }
 .nplate .nm {
   font-size: 12px;
   line-height: 1.2;
@@ -777,6 +795,25 @@ body.claiming .mine .hint { display: none; }
   animation: turnGlow 2.2s ease-in-out infinite;
 }
 .nplate.me { box-shadow: 0 6px 16px rgba(0, 0, 0, 0.5), inset 0 0 0 1px rgba(203, 156, 62, 0.45); }
+
+/* In the flat table the plate is part of the band, so it scales with the tiles
+   and the layout reserves its room. The side seats' turn on end — a pill as long
+   as three melds beside the middle would cost the ponds more than it is worth. */
+.flat .nplate {
+  position: static;
+  max-width: none;
+  gap: calc(var(--dw) * 0.16);
+  padding: calc(var(--dw) * 0.08);
+  padding-right: calc(var(--dw) * 0.22);
+  font-size: clamp(8px, calc(var(--dw) * 0.3), 15px);
+  flex: 0 0 auto;
+}
+.flat .nplate .face { width: clamp(18px, calc(var(--dw) * 0.95), 50px); }
+.flat .nplate .wind { font-size: 1.05em; }
+.flat .nplate .nm { font-size: 1em; max-width: 8em; }
+.flat .nplate .sc { font-size: 1em; }
+.flat .nplate .chip { font-size: 0.72em; }
+.f-left .nplate .nm, .f-right .nplate .nm { max-width: 5em; }
 
 /* the slab in the middle: round and wall in the centre, the four scores around
    the rim turned to face their own seats, the seat to play lit */
@@ -1127,10 +1164,27 @@ input[type=text] {
   color: var(--paper);
   min-height: 44px;
 }
+/* the face picker in the lobby: the drawings are the labels */
+.avpick { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+.avpick .av {
+  width: 52px;
+  height: 52px;
+  min-height: 0;
+  padding: 2px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.06);
+  border: 2px solid transparent;
+  line-height: 0;
+}
+.avpick .av .av-svg { width: 100%; height: auto; display: block; }
+.avpick .av.on { border-color: var(--brass); background: rgba(203, 156, 62, 0.2); }
+
 .seatpick { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
-.seatpick button { justify-content: flex-start; text-align: left; display: block; padding: 10px 12px; }
+.seatpick .face { width: 26px; flex: 0 0 auto; line-height: 0; }
+.seatpick .face .av-svg { width: 100%; height: auto; display: block; }
+.seatpick button { justify-content: flex-start; text-align: left; display: flex; align-items: center; gap: 8px; padding: 10px 12px; }
 .seatpick button.taken { border-style: dashed; }
-.seatpick .wind { font-family: var(--cjk); color: var(--brass); font-size: 18px; margin-right: 6px; }
+.seatpick .wind { font-family: var(--cjk); color: var(--brass); font-size: 18px; flex: 0 0 auto; }
 .seatpick .nm { font-size: 12px; opacity: 0.85; }
 
 .variants { display: grid; gap: 8px; }
@@ -1266,10 +1320,11 @@ body.table-view .mine, body.table-view .tray, body.table-view .foot { display: n
    is the whole screen and both tables simply measure themselves into it. Only
    the furniture that does not scale with the tiles is told to grow. */
 body.table-view .board { padding: 6px; max-width: none; }
-body.table-view .nplate { padding: 5px 11px; gap: 7px; }
-body.table-view .nplate .nm { font-size: clamp(12px, 1.6vh, 21px); }
-body.table-view .nplate .sc { font-size: clamp(12px, 1.7vh, 22px); }
-body.table-view .nplate .wind { font-size: clamp(14px, 1.9vh, 26px); }
+body.table-view .plates .nplate { padding: 4px 12px 4px 4px; gap: 8px; }
+body.table-view .plates .nplate .face { width: clamp(30px, 5vh, 56px); }
+body.table-view .plates .nplate .nm { font-size: clamp(12px, 1.6vh, 21px); }
+body.table-view .plates .nplate .sc { font-size: clamp(12px, 1.7vh, 22px); }
+body.table-view .plates .nplate .wind { font-size: clamp(14px, 1.9vh, 26px); }
 body.table-view .hub { padding: clamp(6px, 1.2vh, 16px) clamp(8px, 1.4vw, 20px); }
 body.table-view .hub .rw { font-size: clamp(26px, 5vh, 64px); }
 body.table-view .hub .dora .tile { width: clamp(16px, 3vh, 40px); }

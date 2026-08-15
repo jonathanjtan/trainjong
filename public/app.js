@@ -1,4 +1,5 @@
 import { tileEl, NAMES } from './tiles.js';
+import { AVATARS, avatarSVG, avatarFor } from './avatars.js';
 
 const $ = (id) => document.getElementById(id);
 const q = new URLSearchParams(location.search);
@@ -10,6 +11,7 @@ const WIND_EN = ['East', 'South', 'West', 'North'];
 let ws = null, sync = null, backoff = 400, live = false;
 let token = localStorage.getItem('mj_token') || '';
 let myName = localStorage.getItem('mj_name') || '';
+let myAvatar = localStorage.getItem('mj_avatar') || '';
 let sel = null;              // index into the rack
 let riichiArmed = false;
 let kongOpen = false;
@@ -50,15 +52,17 @@ function connect() {
   sock.onopen = () => {
     if (gen !== wsGen) { try { sock.close(); } catch { /* already gone */ } return; }
     live = true; backoff = 400; dead(false);
-    send({ t: 'hello', token, name: myName, room: ROOM });
+    send({ t: 'hello', token, name: myName, avatar: myAvatar, room: ROOM });
   };
   sock.onmessage = (e) => {
     if (gen !== wsGen) return;
     let m; try { m = JSON.parse(e.data); } catch { return; }
     if (m.t === 'welcome') {
       token = m.token; myName = m.name;
+      if (m.avatar) myAvatar = m.avatar;
       localStorage.setItem('mj_token', token);
       localStorage.setItem('mj_name', myName || '');
+      localStorage.setItem('mj_avatar', myAvatar || '');
       return;
     }
     if (m.t === 'sync') { onSync(m); return; }
@@ -92,7 +96,7 @@ document.addEventListener('visibilitychange', () => {
   // say hello again and let the fresh snapshot correct whatever we drifted into
   backoff = 400;
   if (!ws || ws.readyState > 1) connect();
-  else send({ t: 'hello', token, name: myName, room: ROOM });
+  else send({ t: 'hello', token, name: myName, avatar: myAvatar, room: ROOM });
   // iOS suspends the audio context behind a lock screen; nudge it awake so the
   // first cue after unlocking the phone is not the one that gets swallowed
   if (audio && audio.state !== 'running') audio.resume?.().catch(() => { /* needs a tap */ });
@@ -357,6 +361,7 @@ function renderSeats() {
   const seatBtns = r.seats.map((s, i) => `
     <button class="${s.name ? 'taken' : ''}" ${s.bot ? '' : 'disabled'} data-a="sit" data-seat="${i}">
       <span class="wind cjk">${WINDS[i]}</span>
+      ${s.name ? `<span class="face">${avatarSVG(avatarFor(s.bot ? i : s.name, s.avatar))}</span>` : ''}
       <span class="nm">${s.name ? esc(s.name) : 'open seat'}${s.bot ? ' — tap to take over' : ''}</span>
     </button>`).join('');
   el.innerHTML = `<div class="sheet-inner">
@@ -402,8 +407,7 @@ function flatTable(g, at) {
       </div>
       ${arrow ? `<div class="arrow a-${dirOf[g.turn]}">${arrow}</div>` : ''}
     </div>
-  </div>
-  <div class="plates">${DIRS.map((dir) => plate(g, at[dir], dir, true)).join('')}</div>`;
+  </div>`;
 }
 
 /* Edge first, pond second: the stylesheet reverses the two bands whose edge is
@@ -412,8 +416,13 @@ function fband(g, seat, dir) {
   const { pond, melds } = seatParts(g, seat);
   const count = showsWall(g, seat)
     ? `<div class="hcount">${tileEl(0, { back: true })}<span class="n num">${g.handCounts[seat]}</span></div>` : '';
+  // The flat table has no tilt to keep names off it, so each seat's name rides
+  // on its own edge, at the head of the strip it owns — beside the player it
+  // belongs to, and taking its room out of the layout rather than floating over
+  // it. In the strip rather than outside it: a line of its own costs every near
+  // seat a row of height, and there is width going spare along that edge.
   return `<div class="fband f-${dir}">
-    <div class="fedge">${count}${melds ? `<div class="fmelds">${melds}</div>` : ''}</div>
+    <div class="fedge">${plate(g, seat, dir, true)}${count}${melds ? `<div class="fmelds">${melds}</div>` : ''}</div>
     <div class="pond">${pond}</div>
   </div>`;
 }
@@ -461,12 +470,11 @@ function arenaTable(g, at) {
   <div class="plates">${DIRS.map((dir) => plate(g, at[dir], dir)).join('')}</div>`;
 }
 
-/* Names sit outside the table, not on it. On it they had to lie back with
-   everything else, which reads badly on a real phone, and each one reserved a
-   corner of its band that the wall and melds then had to squeeze around. Out
-   here they are upright, they float in the felt the table does not use, and the
-   strips get that corner back — worth about 70% more room along the edge. */
-const CORNER = { bottom: 'bl', right: 'br', top: 'tr', left: 'tl' };
+/* The arena's names float off the table: on it they would have to lie back with
+   everything else, which reads badly on a real phone. They hug the middle of
+   their own seat's edge rather than the corner beyond it — a name pinned to the
+   far corner of the board reads as belonging to nobody in particular. */
+const EDGE = { bottom: 'e-bottom', right: 'e-right', top: 'e-top', left: 'e-left' };
 
 function plate(g, seat, dir, withScore = false) {
   const s = sync.room.seats[seat];
@@ -477,11 +485,13 @@ function plate(g, seat, dir, withScore = false) {
     s.name && !s.connected ? '<span class="chip off">away</span>' : '',
     g.phase === 'claim' && g.claimPending?.includes(seat) ? '<span class="chip">…</span>' : '',
   ].filter(Boolean).join('');
-  return `<div class="nplate c-${CORNER[dir]} ${g.turn === seat && g.phase !== 'hand-over' ? 'turn' : ''} ${seat === g.seat ? 'me' : ''}">
-    <span class="wind cjk">${WINDS[windOf(seat, g.dealer)]}</span>
-    <span class="nm">${esc(s.name || '—')}</span>
-    ${withScore ? `<span class="sc num ${g.scores[seat] < 0 ? 'neg' : ''}">${g.scores[seat]}</span>` : ''}
-    ${chips}
+  return `<div class="nplate ${EDGE[dir]} ${g.turn === seat && g.phase !== 'hand-over' ? 'turn' : ''} ${seat === g.seat ? 'me' : ''}">
+    <span class="face">${avatarSVG(avatarFor(s.bot ? seat : s.name || seat, s.avatar))}</span>
+    <span class="who">
+      <span class="line"><span class="wind cjk">${WINDS[windOf(seat, g.dealer)]}</span>
+        <span class="nm">${esc(s.name || '—')}</span></span>
+      <span class="line">${withScore ? `<span class="sc num ${g.scores[seat] < 0 ? 'neg' : ''}">${g.scores[seat]}</span>` : ''}${chips}</span>
+    </span>
   </div>`;
 }
 
@@ -639,15 +649,36 @@ function fitArena() {
     const want = br.top + (parseFloat(cs.paddingTop) || 0) + availH / 2;
     arena.style.setProperty('--shift', `${(want - (box.top + box.height / 2)).toFixed(1)}px`);
   }
+  placePlates(board, box, availW, availH);
 }
 
-/* Discards to a row: near seats first, side seats second. Which shape suits a
-   board is not something you can read off its proportions — it turns on how
-   many rows each pond has wrapped to and how much the melds have taken — so try
-   a few and keep whichever affords the biggest tile. A shape that cannot beat
-   the champion at the champion's own size is dropped after one measurement, so
-   the search costs about one bisection rather than five. */
-const POND_SHAPES = [[6, 5], [8, 6], [10, 6], [6, 4], [5, 3]];
+/* The names hang off the table's own edges, so they need to be told where those
+   ended up — and whether the felt around it has room for them at all. A plate
+   dropped on the middle of an edge with no gutter to sit in lands on the tiles,
+   so that edge keeps to its corner instead. */
+function placePlates(board, box, availW, availH) {
+  const plates = board.querySelector('.plates');
+  if (!plates) return;
+  plates.style.setProperty('--tblw', `${Math.round(box.width)}px`);
+  plates.style.setProperty('--tblh', `${Math.round(box.height)}px`);
+  plates.classList.toggle('vroom', (availH - box.height) / 2 >= 46);
+  plates.classList.toggle('hroom', (availW - box.width) / 2 >= 190);
+}
+
+/* Three numbers make a table: discards to a row for the near seats, the same
+   for the side seats, and whether a side seat's name, count and melds run along
+   its edge (paying in width) or stack up it (paying in height). Which is best is
+   not something you can read off the board's proportions — it turns on how many
+   rows each pond has wrapped to and how much the melds have taken — so try a
+   few and keep whichever affords the biggest tile. Both answers are wanted in
+   practice: a landscape phone gains a fifth laying the side strips out along the
+   edge, and an upright one loses half by doing the same.
+
+   A candidate that cannot beat the champion at the champion's own size is
+   dropped after a single measurement, so the search costs about one bisection
+   rather than ten. */
+const POND_SHAPES = [[6, 5], [8, 6], [10, 6], [6, 4], [5, 3]]
+  .flatMap(([cols, scols]) => [[cols, scols, 0], [cols, scols, 1]]);
 let flatShape = POND_SHAPES[0];              // last winner, tried first and kept on ties
 
 /* The flat table shrink-wraps its content, so — unlike the arena, whose side is
@@ -666,9 +697,10 @@ function fitFlatTable() {
   const availH = board.clientHeight - (parseFloat(cs.paddingTop) || 0) - (parseFloat(cs.paddingBottom) || 0);
   if (availW <= 0 || availH <= 0) return;
 
-  const shape = ([cols, scols]) => {
+  const shape = ([cols, scols, sideRow]) => {
     flat.style.setProperty('--cols', cols);
     flat.style.setProperty('--scols', scols);
+    flat.classList.toggle('side-row', !!sideRow);
   };
   const fits = (dw) => {
     flat.style.setProperty('--dw', `${dw.toFixed(1)}px`);
@@ -1005,6 +1037,10 @@ function lobbySheet() {
     <label class="field"><span class="eyebrow">your name</span>
       <input type="text" id="nameinput" value="${esc(you.name || '')}" maxlength="16" placeholder="who are you?"></label>
 
+    <div class="field"><span class="eyebrow">your face</span>
+      <div class="avpick">${AVATARS.map((a) => `<button class="av ${myAvatar === a.id ? 'on' : ''}"
+        data-a="avatar" data-id="${a.id}" aria-label="${a.id}">${avatarSVG(a.id)}</button>`).join('')}</div></div>
+
     <h2>Seat</h2>
     <div class="seatpick">${seatBtns}</div>
 
@@ -1165,6 +1201,12 @@ document.addEventListener('click', (e) => {
       arenaCal.clear();
       render();
       break;
+    case 'avatar':
+      myAvatar = b.dataset.id;
+      localStorage.setItem('mj_avatar', myAvatar);
+      send({ t: 'name', name: myName, avatar: myAvatar });
+      render();
+      break;
     case 'sit': send({ t: 'sit', seat: +b.dataset.seat }); break;
     case 'seats': seatsOpen = true; renderSeats(); break;
     case 'closeseats': seatsOpen = false; renderSeats(); break;
@@ -1209,7 +1251,7 @@ document.addEventListener('input', (e) => {
     myName = e.target.value.slice(0, 16);
     localStorage.setItem('mj_name', myName);
     clearTimeout(window.__nt);
-    window.__nt = setTimeout(() => send({ t: 'name', name: myName }), 700);
+    window.__nt = setTimeout(() => send({ t: 'name', name: myName, avatar: myAvatar }), 700);
   }
 });
 

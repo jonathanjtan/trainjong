@@ -109,6 +109,11 @@ function serve(req, res) {
 
 const DEFAULT_CONFIG = { variantId: 'hk-old', rounds: 4, claimSeconds: 20, bots: false };
 
+/* An avatar is a name the client looks up in its own table of drawings, so all
+   this end has to do is make sure it stays a name — nothing that could come
+   back out as markup on somebody else's screen. */
+const avatarId = (v) => (/^[a-z0-9-]{1,16}$/.test(String(v || '')) ? String(v) : null);
+
 class Room {
   constructor(name) {
     this.name = name;
@@ -125,13 +130,14 @@ class Room {
 
   player(token) { return this.players.get(token); }
 
-  join(conn, token, name) {
+  join(conn, token, name, avatar) {
     let p = this.players.get(token);
     if (!p) {
-      p = { token, name: name || 'Player', seat: null, conns: new Set(), bot: false, ready: false };
+      p = { token, name: name || 'Player', seat: null, conns: new Set(), bot: false, ready: false, avatar: null };
       this.players.set(token, p);
     }
     if (name) p.name = name.slice(0, 16);
+    if (avatar) p.avatar = avatarId(avatar);
     p.conns.add(conn);
     // reclaim a seat held by this token
     for (let s = 0; s < 4; s++) if (this.seats[s] === token) p.seat = s;
@@ -155,6 +161,7 @@ class Room {
       return {
         seat: s,
         name: p ? p.name : null,
+        avatar: p ? p.avatar : null,
         bot: !!p?.bot,
         ready: !!p?.ready,
         connected: p ? (p.bot || p.conns.size > 0) : false,
@@ -188,7 +195,7 @@ class Room {
           payment: v.scoring?.payment ?? null,
         },
       },
-      you: { token, name: p?.name, seat },
+      you: { token, name: p?.name, avatar: p?.avatar ?? null, seat },
       game: this.game ? this.game.view(seat) : null,
     };
   }
@@ -271,7 +278,9 @@ class Room {
       for (let s = 0; s < 4; s++) {
         if (this.seats[s]) continue;
         const token = `bot-${s}-${crypto.randomBytes(3).toString('hex')}`;
-        this.players.set(token, { token, name: `Bot ${s + 1}`, seat: s, conns: new Set(), bot: true, ready: true });
+        this.players.set(token, {
+          token, name: `Bot ${s + 1}`, seat: s, conns: new Set(), bot: true, ready: true, avatar: null,
+        });
         this.seats[s] = token;
       }
     }
@@ -317,8 +326,8 @@ function onConnection(conn, req) {
     if (m.t === 'hello') {
       r = room(m.room || new URL(req.url, 'http://x').searchParams.get('room'));
       token = m.token && /^[a-zA-Z0-9-]{6,40}$/.test(m.token) ? m.token : crypto.randomBytes(8).toString('hex');
-      const p = r.join(conn, token, m.name);
-      conn.send({ t: 'welcome', token, name: p.name, room: r.name });
+      const p = r.join(conn, token, m.name, m.avatar);
+      conn.send({ t: 'welcome', token, name: p.name, avatar: p.avatar, room: r.name });
       r.broadcast();
       return;
     }
@@ -329,6 +338,7 @@ function onConnection(conn, req) {
     switch (m.t) {
       case 'name':
         p.name = String(m.name || '').slice(0, 16) || p.name;
+        if (m.avatar !== undefined) p.avatar = avatarId(m.avatar);
         break;
       case 'sit': {
         const s = Number(m.seat);
