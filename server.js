@@ -29,7 +29,32 @@ const MIME = {
   '.svg': 'image/svg+xml',
   '.ico': 'image/x-icon',
   '.webmanifest': 'application/manifest+json',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
+  '.gif': 'image/gif',
 };
+
+/* Faces of your own: anything dropped in public/faces shows up in the picker
+   beside the drawn ones. The directory is not in the repo — what you put on
+   your own table is your business, and it should not travel with the code. The
+   list is read from disk rather than trusted from the wire, so the only avatar
+   a client can name is one that is actually sitting there. */
+const FACE_DIR = path.join(PUBLIC, 'faces');
+const FACE_EXT = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif', '.svg']);
+let faceList = [], faceRead = 0;
+function faces() {
+  if (Date.now() - faceRead < 2000) return faceList;
+  faceRead = Date.now();
+  try {
+    faceList = fs.readdirSync(FACE_DIR)
+      .filter((f) => FACE_EXT.has(path.extname(f).toLowerCase()) && !f.startsWith('.'))
+      .sort()
+      .slice(0, 40);
+  } catch { faceList = []; }
+  return faceList;
+}
 
 const cache = new Map();
 function loadStatic() {
@@ -109,10 +134,15 @@ function serve(req, res) {
 
 const DEFAULT_CONFIG = { variantId: 'hk-old', rounds: 4, claimSeconds: 20, bots: false };
 
-/* An avatar is a name the client looks up in its own table of drawings, so all
-   this end has to do is make sure it stays a name — nothing that could come
-   back out as markup on somebody else's screen. */
-const avatarId = (v) => (/^[a-z0-9-]{1,16}$/.test(String(v || '')) ? String(v) : null);
+/* An avatar is either a name the client looks up in its own table of drawings or
+   a file sitting in public/faces. Either way it is checked here, so nothing can
+   come back out as markup — or as a path — on somebody else's screen. */
+function avatarId(v) {
+  const s = String(v || '');
+  if (/^[a-z0-9-]{1,16}$/.test(s)) return s;
+  if (s.startsWith('file:') && faces().includes(s.slice(5))) return s;
+  return null;
+}
 
 class Room {
   constructor(name) {
@@ -179,6 +209,7 @@ class Room {
       room: {
         name: this.name,
         seats: this.seatView(),
+        faces: faces(),
         config: this.config,
         variants: VARIANT_LIST,
         started: !!this.game && this.game.phase !== 'idle',

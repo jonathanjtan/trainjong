@@ -1,0 +1,4 @@
+node_modules/
+# faces are the table owner's own business — see public/faces/README.md
+public/faces/*
+!public/faces/README.md

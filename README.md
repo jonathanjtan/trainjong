@@ -71,22 +71,34 @@ Port taken? `node server.js 9000` or `PORT=9000 node server.js`.
   each score turned towards its own seat, with the seat to play lit; it floats
   inside the ring the ponds make rather than filling it, so the middle stays out
   of the way of the tiles.
-- **Names float off the table**, in the felt the table does not use — the
-  gutters either side in landscape, the bands above and below in portrait. They
-  stay upright there, and it gives each seat's wall and melds back the corner
-  they used to have to squeeze around.
+- **Every seat has a name and a face.** In the flat table the plate rides at the
+  head of the strip its own seat owns, beside that player's melds; the arena,
+  which cannot carry an upright name on a table that lies back, hangs it off the
+  middle of each edge wherever the felt has room and keeps to the corner where
+  it does not. Twelve faces come drawn in — inline SVG, like the tiles, so there
+  is nothing to download — and you pick one in the lobby beside your name.
+- **Faces of your own**: drop images in `public/faces` and they join the picker,
+  cropped to the same circle. The list is read off the disk, so a new file shows
+  up within a couple of seconds. That directory is gitignored — what you put on
+  your own table stays on your own table.
 - **It lies back in landscape**, again like the reference. That is not just
   decoration: a flat square table can only ever be as big as the short edge of
   the screen, and landscape has width going spare. Tilting it trades that
   surplus width for about a third more tile, and the near half — which is yours
   — gains the most. The angle comes from how much surplus width there actually
   is, so portrait, which has none, stays flat and top-down.
-- **`simple` in the top bar** flattens all that back to the older layout: every
-  seat upright, ponds beside their player rather than pooled. It sticks per
-  browser, so one player can use it without affecting the table. What sets the
-  tile size there is the *melds*, not the discards — a seat with three of them
-  wraps to three rows and the whole table shrinks to pay for it — so they are
-  drawn smaller than the discards and the tile count rides in the name plate.
+- **`simple` in the top bar** draws the same table without the rotation: each
+  seat's melds along their own edge, their discards pooled around the middle,
+  every tile facing the reader. An opponent's concealed hand is one face-down
+  tile with its count on it rather than thirteen backs — thirteen say nothing
+  the number does not, and the edge is better spent on the melds. It sticks per
+  browser, so one player can use it without affecting the table.
+  Its size is measured rather than guessed: the grid shrink-wraps and the tile
+  size is bisected until the whole table fits the board. How the ponds are
+  shaped — discards to a row, and whether a side seat's strip runs along its
+  edge or up it — is searched at the same time, because which one a board can
+  afford turns on how many rows the ponds have wrapped to. A landscape phone
+  gains a fifth of its tile size taking the first; an upright one loses half.
 - **Landscape works**, and so does a zoomed-in laptop: the layout is sized from
   the viewport, so the table and your hand always fit without scrolling. The
   table is square and sized to the shorter edge, so on a wide screen it sits

@@ -361,7 +361,7 @@ function renderSeats() {
   const seatBtns = r.seats.map((s, i) => `
     <button class="${s.name ? 'taken' : ''}" ${s.bot ? '' : 'disabled'} data-a="sit" data-seat="${i}">
       <span class="wind cjk">${WINDS[i]}</span>
-      ${s.name ? `<span class="face">${avatarSVG(avatarFor(s.bot ? i : s.name, s.avatar))}</span>` : ''}
+      ${s.name ? `<span class="face">${faceEl(s.bot ? i : s.name, s.avatar)}</span>` : ''}
       <span class="nm">${s.name ? esc(s.name) : 'open seat'}${s.bot ? ' — tap to take over' : ''}</span>
     </button>`).join('');
   el.innerHTML = `<div class="sheet-inner">
@@ -476,6 +476,16 @@ function arenaTable(g, at) {
    far corner of the board reads as belonging to nobody in particular. */
 const EDGE = { bottom: 'e-bottom', right: 'e-right', top: 'e-top', left: 'e-left' };
 
+/* A face is either one of the drawn ones or a file the table's owner dropped in
+   public/faces. Only names the server listed are ever put in an src, so a file
+   that is not there cannot be conjured up from the wire. */
+function faceEl(who, chosen) {
+  if (chosen?.startsWith('file:') && sync.room.faces?.includes(chosen.slice(5))) {
+    return `<img class="av-img" src="/faces/${encodeURIComponent(chosen.slice(5))}" alt="">`;
+  }
+  return avatarSVG(avatarFor(who, chosen));
+}
+
 function plate(g, seat, dir, withScore = false) {
   const s = sync.room.seats[seat];
   const chips = [
@@ -486,7 +496,7 @@ function plate(g, seat, dir, withScore = false) {
     g.phase === 'claim' && g.claimPending?.includes(seat) ? '<span class="chip">…</span>' : '',
   ].filter(Boolean).join('');
   return `<div class="nplate ${EDGE[dir]} ${g.turn === seat && g.phase !== 'hand-over' ? 'turn' : ''} ${seat === g.seat ? 'me' : ''}">
-    <span class="face">${avatarSVG(avatarFor(s.bot ? seat : s.name || seat, s.avatar))}</span>
+    <span class="face">${faceEl(s.bot ? seat : s.name || seat, s.avatar)}</span>
     <span class="who">
       <span class="line"><span class="wind cjk">${WINDS[windOf(seat, g.dealer)]}</span>
         <span class="nm">${esc(s.name || '—')}</span></span>
@@ -1039,7 +1049,11 @@ function lobbySheet() {
 
     <div class="field"><span class="eyebrow">your face</span>
       <div class="avpick">${AVATARS.map((a) => `<button class="av ${myAvatar === a.id ? 'on' : ''}"
-        data-a="avatar" data-id="${a.id}" aria-label="${a.id}">${avatarSVG(a.id)}</button>`).join('')}</div></div>
+        data-a="avatar" data-id="${a.id}" aria-label="${a.id}">${avatarSVG(a.id)}</button>`).join('')}
+        ${(r.faces || []).map((f) => `<button class="av ${myAvatar === `file:${f}` ? 'on' : ''}"
+          data-a="avatar" data-id="file:${esc(f)}" aria-label="${esc(f)}">
+          <img class="av-img" src="/faces/${encodeURIComponent(f)}" alt=""></button>`).join('')}</div>
+      ${(r.faces || []).length ? '' : '<span class="hint">drop images in public/faces to add your own</span>'}</div>
 
     <h2>Seat</h2>
     <div class="seatpick">${seatBtns}</div>
