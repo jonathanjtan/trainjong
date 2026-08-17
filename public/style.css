@@ -1174,7 +1174,9 @@ input[type=text] {
   min-height: 44px;
 }
 /* the face picker in the lobby: the drawings are the labels */
-.avpick { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+/* a whole unzipped set can land in here, so the picker scrolls rather than
+   pushing the seat picker off the sheet */
+.avpick { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; max-height: 232px; overflow-y: auto; }
 .avpick .av {
   width: 52px;
   height: 52px;

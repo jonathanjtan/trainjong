@@ -43,16 +43,24 @@ const MIME = {
    a client can name is one that is actually sitting there. */
 const FACE_DIR = path.join(PUBLIC, 'faces');
 const FACE_EXT = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif', '.svg']);
+const FACE_MAX = 240;
 let faceList = [], faceRead = 0;
 function faces() {
   if (Date.now() - faceRead < 2000) return faceList;
   faceRead = Date.now();
-  try {
-    faceList = fs.readdirSync(FACE_DIR)
-      .filter((f) => FACE_EXT.has(path.extname(f).toLowerCase()) && !f.startsWith('.'))
-      .sort()
-      .slice(0, 40);
-  } catch { faceList = []; }
+  const out = [];
+  // one level of folders too, so an unzipped set can go in whole
+  const walk = (dir, base, depth) => {
+    let entries;
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const e of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+      if (e.name.startsWith('.') || out.length >= FACE_MAX) continue;
+      if (e.isDirectory()) { if (depth) walk(path.join(dir, e.name), `${base}${e.name}/`, depth - 1); }
+      else if (FACE_EXT.has(path.extname(e.name).toLowerCase())) out.push(base + e.name);
+    }
+  };
+  walk(FACE_DIR, '', 2);
+  faceList = out;
   return faceList;
 }
 
@@ -106,6 +114,10 @@ function serveGuide(req, res) {
 function serve(req, res) {
   if (DEV) loadStatic();
   let url = req.url.split('?')[0];
+  // faces come with the names their owner gave them — spaces, kana, anything —
+  // and those arrive percent-encoded. The lookup is a map of files that are
+  // actually there, so decoding cannot walk anywhere it should not.
+  try { url = decodeURIComponent(url); } catch { /* leave it as it came */ }
   if (url === '/guide.json') return serveGuide(req, res);
   if (url === '/') url = '/index.html';
   const file = cache.get(url) || (path.extname(url) === '' ? cache.get('/index.html') : null);

@@ -479,9 +479,11 @@ const EDGE = { bottom: 'e-bottom', right: 'e-right', top: 'e-top', left: 'e-left
 /* A face is either one of the drawn ones or a file the table's owner dropped in
    public/faces. Only names the server listed are ever put in an src, so a file
    that is not there cannot be conjured up from the wire. */
+const faceSrc = (name) => `/faces/${name.split('/').map(encodeURIComponent).join('/')}`;
+
 function faceEl(who, chosen) {
   if (chosen?.startsWith('file:') && sync.room.faces?.includes(chosen.slice(5))) {
-    return `<img class="av-img" src="/faces/${encodeURIComponent(chosen.slice(5))}" alt="">`;
+    return `<img class="av-img" src="${faceSrc(chosen.slice(5))}" alt="" loading="lazy">`;
   }
   return avatarSVG(avatarFor(who, chosen));
 }
@@ -1051,9 +1053,9 @@ function lobbySheet() {
       <div class="avpick">${AVATARS.map((a) => `<button class="av ${myAvatar === a.id ? 'on' : ''}"
         data-a="avatar" data-id="${a.id}" aria-label="${a.id}">${avatarSVG(a.id)}</button>`).join('')}
         ${(r.faces || []).map((f) => `<button class="av ${myAvatar === `file:${f}` ? 'on' : ''}"
-          data-a="avatar" data-id="file:${esc(f)}" aria-label="${esc(f)}">
-          <img class="av-img" src="/faces/${encodeURIComponent(f)}" alt=""></button>`).join('')}</div>
-      ${(r.faces || []).length ? '' : '<span class="hint">drop images in public/faces to add your own</span>'}</div>
+          data-a="avatar" data-id="file:${esc(f)}" title="${esc(f)}" aria-label="${esc(f)}">
+          <img class="av-img" src="${faceSrc(f)}" alt="" loading="lazy"></button>`).join('')}</div>
+      ${(r.faces || []).length ? '' : '<span class="hint">drop images (or a folder of them) in public/faces to add your own</span>'}</div>
 
     <h2>Seat</h2>
     <div class="seatpick">${seatBtns}</div>
