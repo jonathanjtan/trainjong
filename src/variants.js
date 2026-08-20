@@ -55,6 +55,51 @@ export const VARIANTS = {
     notenPenalty: 0,
   },
 
+  /**
+   * 五方 — Hong Kong New Style for five seats. Seats run 東南西北中, which is
+   * the standard five-direction set and already in the box, so a seat honour is
+   * still just `E + seatWind`. The five tuned numbers all pay for one fact:
+   * a fifth hand takes 13 tiles off the wall AND adds a fifth mouth to the
+   * queue, so everybody draws ~15 times instead of ~22. See FIVE.md.
+   */
+  'hk-new-5': {
+    id: 'hk-new-5',
+    name: 'Five Directions',
+    zh: '五方',
+    blurb: 'Five seats 東南西北中, 13 tiles, 2 faan minimum, tenpai penalty at the draw.',
+    seats: 5,
+    handSize: 13,
+    setsNeeded: 4,
+    bonusTiles: true,
+    thirteenOrphans: true,
+    sevenPairs: false,
+    riichi: false,
+    deadWallSize: 0,
+    dora: false,
+    scorer: 'hk',
+    startScore: 0,
+    scoring: {
+      minFaan: 2,          // 3 is unreachable in 15 draws — the table just folds
+      limitFaan: 10,
+      payment: 'half',     // bystanders ½ unit each, shooter covers the balance
+      baseUnit: 2,         // keeps the odd-seat halves integral
+      seatFlowers: false,  // 8 flowers do not divide by 5 seats
+      table: {
+        ...HK_TABLE,
+        allSimples: 1,     // new style
+        allChows: 2,       // chow supply fell by a third; pung supply did not
+        allHonors: 10, smallFourWinds: 6, mixedTerminals: 6,
+      },
+    },
+    dealerRepeatsOnWin: true,
+    dealerRepeatsOnDraw: false,
+    dealerRepeatsIfTenpai: true,
+    flowerReplacementCountsAsKong: true,
+    chowFromLeftOnly: true,
+    notenPenalty: 4,       // raw points = 2 units at baseUnit 2
+    notenPairwise: true,   // each noten seat pays each tenpai seat
+  },
+
   'taiwan-16': {
     id: 'taiwan-16',
     name: 'Taiwanese 16-tile',
@@ -105,7 +150,7 @@ export const VARIANTS = {
 };
 
 export const VARIANT_LIST = Object.values(VARIANTS).map((v) => ({
-  id: v.id, name: v.name, zh: v.zh, blurb: v.blurb, handSize: v.handSize,
+  id: v.id, name: v.name, zh: v.zh, blurb: v.blurb, handSize: v.handSize, seats: v.seats || 4,
 }));
 
 export function variant(id) {

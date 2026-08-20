@@ -632,7 +632,16 @@ body.claiming .mine .hint { display: none; }
   --pondh: calc(var(--prows) * (var(--dh) + var(--gap)));
   --bedge: calc(var(--dw) * 1.18);             /* wall + melds strip */
   --blk: calc(var(--pondh) + var(--bedge) + 4px);
-  --S: calc(var(--ring) + 2 * var(--blk));
+  /* One side of the table, and the two numbers that turn a side into a polygon:
+     how far the centre sits from a side, and how big a box the whole shape
+     needs. The renderer sets both; the defaults below are the square, where the
+     apothem is half the side and the box is the side. Both are plain
+     multipliers, which is what keeps --S a straight line in --dw for the fit. */
+  --apof: 0.5;
+  --boxf: 1;
+  --side: calc(var(--ring) + 2 * var(--blk));
+  --apo: calc(var(--side) * var(--apof));
+  --S: calc(var(--side) * var(--boxf));
   /* the slab is drawn inside the hole the four ponds ring rather than filling
      it. The hole is one pond row across and cannot be made smaller — shorter
      rows need more of them, which pushes the ponds inward and costs more than
@@ -672,32 +681,38 @@ body.claiming .mine .hint { display: none; }
 .arena::before {
   content: "";
   position: absolute;
-  inset: calc(var(--blk) - var(--bedge) * 0.5);
+  inset: calc(var(--S) / 2 - var(--apo) + var(--blk) - var(--bedge) * 0.5);
   border: 1px solid rgba(203, 156, 62, 0.1);
-  border-radius: calc(var(--dw) * 0.5);
+  border-radius: var(--inkr, calc(var(--dw) * 0.5));
   pointer-events: none;
 }
 
-/* Each band is the full width of the square and sits along the bottom edge; the
-   other three are that same box spun about the square's centre. The origin is
-   the centre expressed in the band's own coordinates, which is why it reads as
-   half the square up from the band's own top-left. */
+/* A pentagon has no corners worth squaring off, so past four seats the felt is
+   drawn round — which is also what a table that seats five actually looks like. */
+.arena.poly { border-radius: 50%; --inkr: 50%; }
+
+/* Each band is one side of the polygon, laid along the bottom of the box; the
+   others are that same band spun about the centre by a whole turn divided by
+   the seat count. The origin is the centre expressed in the band's own
+   coordinates, which is why it reads as the apothem up from the band's bottom.
+   At four seats the apothem is half the side and this is the square that was
+   here before, to the pixel. */
 .band {
   position: absolute;
-  left: 0;
-  top: calc(var(--S) - var(--blk));
-  width: var(--S);
+  left: calc((var(--S) - var(--side)) / 2);
+  top: calc(var(--S) / 2 + var(--apo) - var(--blk));
+  width: var(--side);
   height: var(--blk);
-  transform-origin: 50% calc(var(--blk) - var(--S) / 2);
+  transform-origin: 50% calc(var(--blk) - var(--apo));
   transform: rotate(var(--rot, 0deg));
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: space-between;
 }
-.b-right { --rot: -90deg; }
-.b-top { --rot: 180deg; }
-.b-left { --rot: 90deg; }
+/* --rot is set inline from the seat's index: a whole turn divided by the seat
+   count, counter-clockwise, so the seat after yours lands on your right. At
+   four seats that is the 0 / -90 / -180 / -270 this used to name. */
 
 /* Discards fill left to right from the player's own view, and each new row lands
    behind the last — the first row is the one nearest the middle, exactly as you
@@ -755,6 +770,20 @@ body.claiming .mine .hint { display: none; }
 .plates .e-top { left: 50%; top: max(calc(50% - var(--tblh, 0px) / 2 - 47px), 2px); transform: translateX(-50%); }
 .plates .e-left { top: 50%; left: max(calc(50% - var(--tblw, 0px) / 2 - 3px - var(--pw, 186px)), 2px); transform: translateY(-50%); }
 .plates .e-right { top: 50%; left: min(calc(50% + var(--tblw, 0px) / 2 + 3px), calc(100% - var(--pw, 186px) - 2px)); transform: translateY(-50%); }
+/* Past four seats there is no named edge for a name to hang off, so each one
+   goes out along its own seat's direction instead — on an ellipse, because the
+   tilted table is wider than it is tall. The plate itself is never turned: the
+   band under it lies back with the felt, but a name on its side reads as a
+   mistake. Narrower, too, since five of them have one rim to share. */
+.plates.poly .nplate {
+  left: 50%;
+  top: 50%;
+  max-width: min(30%, 168px);
+  transform: translate(-50%, -50%)
+    translate(calc(var(--sx, 0) * (var(--tblw, 240px) / 2 + 12px)),
+              calc(var(--sy, 1) * (var(--tblh, 240px) / 2 + 12px)));
+}
+
 /* No gutter on that axis: the plate would land on the tiles, so it keeps to the
    corner of its own edge — each seat's own left, so the four still pinwheel. */
 .plates:not(.vroom) .e-bottom { left: 4px; top: auto; bottom: 4px; transform: none; }
@@ -858,13 +887,37 @@ body.claiming .mine .hint { display: none; }
 .chub .sc b { font-family: var(--cjk); font-weight: 400; color: var(--brass); }
 .chub .sc i { font-family: var(--num); font-style: normal; font-weight: 600; }
 .chub .sc i.neg { color: #f0a29a; }
+/* Four seats keep the grid: it puts each readout squarely on its own edge and
+   nothing about a square wants improving. The seat's angle still does the
+   turning, so the square and the polygon read their text the same way. */
 .chub .s-top { grid-area: 1 / 2 / 2 / 3; }
 .chub .s-left { grid-area: 2 / 1 / 3 / 2; }
 .chub .s-right { grid-area: 2 / 3 / 3 / 4; }
 .chub .s-bottom { grid-area: 3 / 2 / 4 / 3; }
-.chub .s-top > span { transform: rotate(180deg); }
-.chub .s-left > span { transform: rotate(90deg); }
-.chub .s-right > span { transform: rotate(-90deg); }
+.chub:not(.poly) .sc > span { transform: rotate(var(--a, 0deg)); }
+
+/* Past four there is no grid to sit in, so the readouts go round the rim. Each
+   is spun by its own seat's angle — the same angle that seat's band was spun by
+   — so a score always faces the player it belongs to, and the spin comes free
+   because rotating the box rotates what is written in it. */
+.chub.poly {
+  display: block;
+  border-radius: 50%;
+}
+.chub.poly .sc {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: calc(var(--hubw) * 0.46);
+  height: var(--hs);
+  margin: calc(var(--hs) / -2) 0 0 calc(var(--hubw) * -0.23);
+  transform: rotate(var(--a, 0deg)) translateY(calc(var(--hubw) * 0.29));
+}
+.chub.poly .mid {
+  position: absolute;
+  inset: calc(var(--hubw) * 0.22);
+  display: flex;
+}
 /* Static, and brighter rather than dimmer: `pulse` fades opacity to 0.25, which
    made the seat to play the one score you could not read. The plate in the
    corner already carries the motion, and it glows by box-shadow. */

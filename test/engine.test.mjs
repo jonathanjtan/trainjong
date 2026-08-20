@@ -159,12 +159,12 @@ test('riichi: nine gates is a yakuman and the dealer collects 48000', () => {
 
 export function totalTiles(g) {
   let n = g.wall.length + g.deadWall.length;
-  for (let s = 0; s < 4; s++) {
+  for (let s = 0; s < g.n; s++) {
     n += g.hands[s].length + g.bonus[s].length + g.discards[s].length;
     for (const m of g.melds[s]) n += m.type === 'kong' ? 4 : 3;
   }
   // a claimed tile lives in both the meld and the discarder's pile — count it once
-  for (let s = 0; s < 4; s++) for (const m of g.melds[s]) if (m.open && m.from !== null) n -= 1;
+  for (let s = 0; s < g.n; s++) for (const m of g.melds[s]) if (m.open && m.from !== null) n -= 1;
   return n;
 }
 
@@ -190,7 +190,7 @@ export function playRandom(variantId, seed, rounds = 1, maxHands = 24) {
     // global conservation is not enough: tiles can end up with the WRONG seat and
     // still add to 136. Check each hand individually — but only during live play,
     // since a winner legitimately holds the winning tile once the hand is over.
-    for (let s = 0; s < 4 && (g.phase === 'play' || g.phase === 'claim'); s++) {
+    for (let s = 0; s < g.n && (g.phase === 'play' || g.phase === 'claim'); s++) {
       const held = g.hands[s].length + g.melds[s].length * 3;
       const onTurn = g.phase === 'play' && g.turn === s;
       assert.ok(held === size || (onTurn && held === size + 1),
@@ -485,6 +485,148 @@ test('bot: every level plays a legal game to the end', () => {
       assert.ok(hands >= 1, `${level}/${variantId} finished no hands`);
     }
   }
+});
+
+// -------------------------------------------------------------- five seats
+
+const five = { seat: 0, seats: 5, setsNeeded: 4, dealer: 0, melds: [], bonusTiles: [], flags: {} };
+const FIVE = VARIANTS['hk-new-5'].scoring;
+
+test('five seats: bystanders pay half a unit and the shooter covers the balance', () => {
+  const r = scoreHK({
+    ...five, discarder: 3, selfDraw: false, seatWind: 1, roundWind: 0,
+    concealed: counts(T('p1 p2 p3 p4 p5 p6 s7 s8 s9 zc zc zc m2 m2')), winTile: BY_CODE.m2,
+  }, FIVE);
+  assert.strictEqual(r.deltas.length, 5);
+  assert.strictEqual(r.deltas.reduce((a, b) => a + b, 0), 0);
+  assert.strictEqual(-r.deltas[3], r.units * 2.5, 'shooter pays n/2');
+  assert.strictEqual(-r.deltas[1], r.units * 0.5, 'bystanders pay half a unit');
+  assert.strictEqual(r.deltas[0], r.units * 4, "winner's income is n-1 units");
+});
+
+test('five seats: the winner earns the same self-drawn as won on a discard', () => {
+  const hand = counts(T('p1 p2 p3 p4 p5 p6 s7 s8 s9 zc zc zc m2 m2'));
+  const ron = scoreHK({ ...five, discarder: 3, selfDraw: false, seatWind: 1, roundWind: 0, concealed: hand, winTile: BY_CODE.m2 }, FIVE);
+  const tsumo = scoreHK({ ...five, discarder: null, selfDraw: true, seatWind: 1, roundWind: 0, concealed: hand, winTile: BY_CODE.m2 }, FIVE);
+  assert.strictEqual(ron.deltas[0] / ron.units, tsumo.deltas[0] / tsumo.units, 'income is 4 units either way');
+});
+
+test('five seats: 中 is the centre seat’s own honour as well as a dragon', () => {
+  const hand = counts(T('p1 p2 p3 p4 p5 p6 s7 s8 s9 zc zc zc m2 m2'));
+  const centre = scoreHK({ ...five, discarder: 3, selfDraw: false, seatWind: 4, roundWind: 0, concealed: hand, winTile: BY_CODE.m2 }, FIVE);
+  const east = scoreHK({ ...five, discarder: 3, selfDraw: false, seatWind: 0, roundWind: 1, concealed: hand, winTile: BY_CODE.m2 }, FIVE);
+  assert.ok(centre.patterns.some((p) => p.key === 'seatWindPung'), 'centre seat scores 門風 on 中');
+  assert.strictEqual(centre.value - east.value, 1, 'worth exactly one faan more to the centre seat');
+});
+
+test('five seats: 正花 is off, but the flower suites still pay', () => {
+  const hand = counts(T('p1 p2 p3 p4 p5 p6 s7 s8 s9 zc zc zc m2 m2'));
+  const args = { ...five, discarder: 3, selfDraw: false, seatWind: 0, roundWind: 1, concealed: hand, winTile: BY_CODE.m2 };
+  const own = scoreHK({ ...args, bonusTiles: [BY_CODE.f1] }, FIVE);          // seat 0's own flower
+  assert.ok(!own.patterns.some((p) => p.key === 'seatFlower'), 'no 正花 at five seats');
+  const suite = scoreHK({ ...args, bonusTiles: T('f1 f2 f3 f4') }, FIVE);
+  assert.ok(suite.patterns.some((p) => p.key === 'flowerSet'), '花槓 still pays, and pays anyone');
+});
+
+test('five seats: the noten penalty is pairwise and nets to zero', () => {
+  const g = new Game({ variantId: 'hk-new-5', seed: 31337, rounds: 1 });
+  g.startHand();
+  assert.strictEqual(g.n, 5);
+  const p = g.v.notenPenalty;
+  for (const tenpai of [[0], [0, 1], [0, 1, 2], [0, 1, 2, 3]]) {
+    const d = [...Array(5)].map((_, s) => (tenpai.includes(s) ? p * (5 - tenpai.length) : -p * tenpai.length));
+    assert.strictEqual(d.reduce((a, b) => a + b, 0), 0, `${tenpai.length} tenpai`);
+  }
+  // and the engine agrees when it actually runs one
+  g.wall = [];
+  const r = g.exhaustiveDraw();
+  assert.strictEqual(r.result.deltas.length, 5);
+  assert.strictEqual(r.result.deltas.reduce((a, b) => a + b, 0), 0);
+});
+
+test('five seats: chow still comes only from the seat on your left', () => {
+  const g = new Game({ variantId: 'hk-new-5', seed: 909, rounds: 1 });
+  g.startHand();
+  g.hands[2] = T('p1 p2 s5 s5 s6 m3 m4 m5 m7 m8 zc zc zn');
+  const o = g.claimOptionsFor(2, 1, BY_CODE.p3, 'discard');   // seat 1 is seat 2's left
+  assert.ok(o?.chows?.length, 'left neighbour: chow offered');
+  assert.ok(!g.claimOptionsFor(2, 4, BY_CODE.p3, 'discard')?.chows, 'four seats upstream: no chow');
+});
+
+test('five seats: a full match runs to match-over with the books balanced', () => {
+  const g = playRandom('hk-new-5', 2024, 2, 60);
+  assert.strictEqual(g.n, 5);
+  assert.strictEqual(g.scores.reduce((a, b) => a + b, 0), 0);
+  assert.ok(g.history.length >= 10, `only ${g.history.length} hands`);
+});
+
+test('the same engine still runs four-seat rules unchanged', () => {
+  const g = playRandom('hk-new', 2024, 2, 60);
+  assert.strictEqual(g.n, 4);
+  assert.strictEqual(g.scores.reduce((a, b) => a + b, 0), 0);
+});
+
+// ------------------------------------------------- the tenpai-aware endgame
+
+/* A plain run of simples with no honours: worth nothing under a table minimum,
+   so the value gate refuses to open the hand for it — until the wall is nearly
+   out and the rules pay for tenpai. */
+const formalHand = () => T('p2 p3 p5 p6 p7 s4 s5 s6 m3 m4 m5 m7 m8');
+const formalOffer = {
+  phase: 'claim', seats: 5, needsValue: true,
+  melds: [[], [], [], [], []], discards: [[], [], [], [], []],
+  riichiSeats: [false, false, false, false, false],
+  lastDiscard: { seat: 4, tile: BY_CODE.p4 },
+  legal: { chows: [[BY_CODE.p2, BY_CODE.p3]] },
+};
+
+test('bot: 形式聴牌 — with the wall nearly out it claims for tenpai it cannot cash', () => {
+  const base = { ...botView(), ...formalOffer, hand: formalHand() };
+  // deep in the wall, the value gate holds: this chow can never be declared
+  const early = botAction({ ...base, wall: 60, notenPenalty: 4, notenPairwise: true }, 'hard');
+  assert.deepStrictEqual(early, { type: 'pass' }, 'early: value gate refuses a worthless chow');
+  // with four draws left and a penalty on the table, the settlement pays for it
+  const late = botAction({ ...base, wall: 20, notenPenalty: 4, notenPairwise: true }, 'hard');
+  assert.strictEqual(late.type, 'chow', 'endgame: claims to reach a wait');
+});
+
+test('bot: no noten penalty means no reason to chase a worthless tenpai', () => {
+  const base = { ...botView(), ...formalOffer, hand: formalHand(), wall: 20 };
+  assert.deepStrictEqual(botAction({ ...base, notenPenalty: 0 }, 'hard'), { type: 'pass' },
+    'a rule set that does not pay for tenpai should not buy one');
+});
+
+test('bot: the tenpai swing is the same however many others get there', () => {
+  // pairwise: flipping yourself from noten to tenpai is worth penalty × (n-1)
+  // whether one other seat is waiting or three, because you stop paying every
+  // tenpai seat and start collecting from every noten one
+  const n = 5, p = 4;
+  const share = (t, mine) => (mine ? p * (n - t) : -p * t);
+  for (const others of [0, 1, 2, 3]) {
+    const asNoten = share(others, false);
+    const asTenpai = share(others + 1, true);
+    assert.strictEqual(asTenpai - asNoten, p * (n - 1), `${others} others tenpai`);
+  }
+});
+
+test('bot: folding late keeps the wait when something safe enough keeps it', () => {
+  // seat 1 has three open melds (a real threat) and has already discarded m9,
+  // so m9 is safe; the hand is tenpai and throwing m9 leaves it tenpai
+  const hand = T('p1 p2 p3 p4 p5 p6 s7 s8 s9 m2 m2 m2 m9');
+  const view = botView({
+    seats: 5, wall: 15, hand, notenPenalty: 4, notenPairwise: true,
+    melds: [[], [
+      { type: 'pung', tile: BY_CODE.zc, open: true, from: 0 },
+      { type: 'pung', tile: BY_CODE.ze, open: true, from: 0 },
+      { type: 'pung', tile: BY_CODE.s1, open: true, from: 0 },
+    ], [], [], []],
+    discards: [[], T('m9'), [], [], []],
+    riichiSeats: [false, false, false, false, false],
+    legal: { discard: hand },
+  });
+  const a = botAction(view, 'hard');
+  assert.strictEqual(a.type, 'discard');
+  assert.strictEqual(a.tile, BY_CODE.m9, 'throws the safe tile that keeps the hand waiting');
 });
 
 console.log(`\n${pass} passed, ${fail} failed`);

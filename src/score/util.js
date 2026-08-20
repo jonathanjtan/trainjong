@@ -51,8 +51,8 @@ export function shape(melds, decomp, ctx) {
     allEnds,            // 混老頭 material: every tile terminal or honor
     allTerminals: allTerm,
     allSimples: simpleOnly,
-    seatWindPung: windPungs.some((s) => s.tile === E + ctx.seatWind),
-    roundWindPung: windPungs.some((s) => s.tile === E + ctx.roundWind),
+    seatWindPung: pungs.some((s) => s.tile === E + ctx.seatWind),
+    roundWindPung: pungs.some((s) => s.tile === E + ctx.roundWind),
     dragonPair: dragon(pair),
     windPair: wind(pair),
     seatWindPair: pair === E + ctx.seatWind,
