@@ -684,6 +684,11 @@ export class Game {
       log: this.log.slice(-24),
       useBonus: this.v.bonusTiles,
       useRiichi: this.v.riichi,
+      // rule facts a player is entitled to know, and a bot has to reason with
+      setsNeeded: this.v.setsNeeded,
+      useSevenPairs: !!this.v.sevenPairs,
+      useThirteen: !!this.v.thirteenOrphans,
+      needsValue: !!this.v.requireYaku || (this.v.scoring?.minFaan ?? 0) > 0,
     };
   }
 

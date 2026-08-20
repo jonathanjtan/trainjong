@@ -51,7 +51,17 @@ Port taken? `node server.js 9000` or `PORT=9000 node server.js`.
   stalling the table — pung/chow/win prompts auto-pass when it runs out. Set
   it to *no timer* if you'd rather wait for everyone.
 - **Bots** fill empty seats when enabled, so you can test solo tonight:
-  start the server, sit in one seat, enable bots, Start.
+  start the server, sit in one seat, enable bots, Start. They come at three
+  strengths, picked in the lobby once bots are on:
+  - *easy* — plays each tile on its own merits and claims discards because they
+    are offered. A beginner; this is exactly the bot that used to fill seats.
+  - *normal* — counts how far its hand is from a win and picks the discard that
+    keeps the most useful draws, and only claims a tile when the claim actually
+    shortens that distance. Won't open a hand on a run it can't score with.
+  - *hard* — also tracks how many of each tile are still unseen, keeps quiet on
+    a wait that is already dead, and reads the table: against a riichi (or a
+    seat with melds piling up) it will abandon a hopeless hand and discard only
+    tiles that seat has already passed on.
 - **Multiple tables**: append `?room=anything` to the URL; each room name is
   its own table.
 - **Sound**: the bell icon toggles a small "your turn" chime (synthesized —
@@ -130,12 +140,15 @@ changes needed.
 - `node test/engine.test.mjs` — engine tests + cross-variant fuzz with tile-,
   per-seat- and money-conservation invariants. The fuzz is fully seeded: the
   wall *and* the action choices, so a failure reproduces exactly.
-- `node test/e2e.mjs hk-old 3` — boots the real server, drives four WebSocket
-  clients through 3+ hands.
+- `node test/e2e.mjs hk-old 3 normal` — boots the real server, drives four
+  WebSocket clients through 3+ hands; the last argument is the bot level the
+  clients play at.
 
 Layout: `src/` engine (tiles → hand logic → per-variant scorers → game state
 machine), `server.js` HTTP + hand-rolled RFC 6455 WebSocket + rooms,
-`public/` the client (vanilla ES modules, inline-SVG tiles).
+`public/` the client (vanilla ES modules, inline-SVG tiles). The bots live in
+`src/bot.js` and see nothing a player at the table cannot — their own hand plus
+the public state — and think with the shanten/ukeire pair in `src/hand.js`.
 
 The table itself is worth knowing about before you edit `.arena` in
 `public/style.css`. One seat's band — pond, wall, melds, plate — is written for

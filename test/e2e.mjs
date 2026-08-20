@@ -6,6 +6,7 @@ import { botAction } from '../src/bot.js';
 const PORT = 8123 + (process.pid % 200);
 const VARIANT = process.argv[2] || 'hk-old';
 const HANDS = Number(process.argv[3] || 3);
+const LEVEL = process.argv[4] || 'normal';
 
 const server = spawn(process.execPath, ['server.js'], {
   cwd: new URL('..', import.meta.url).pathname,
@@ -79,7 +80,7 @@ function step(c) {
     || (game.phase === 'claim' && game.legal
       && (game.legal.win || game.legal.pung || game.legal.chows || game.legal.kong !== undefined || game.legal.canPass));
   if (!mine) return;
-  const a = botAction(game);
+  const a = botAction(game, LEVEL);
   if (a) send(c, { t: 'action', action: a });
 }
 

@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { handleUpgrade, heartbeat } from './src/ws.js';
 import { Game } from './src/game.js';
 import { VARIANT_LIST, variant as getVariant } from './src/variants.js';
-import { botAction } from './src/bot.js';
+import { botAction, LEVELS } from './src/bot.js';
 import { guideData } from './src/guide.js';
 import { HK_TABLE } from './src/score/hk.js';
 import { TW_TABLE } from './src/score/taiwan.js';
@@ -144,7 +144,7 @@ function serve(req, res) {
 
 // -------------------------------------------------------------------- room state
 
-const DEFAULT_CONFIG = { variantId: 'hk-old', rounds: 4, claimSeconds: 20, bots: false };
+const DEFAULT_CONFIG = { variantId: 'hk-old', rounds: 4, claimSeconds: 20, bots: false, botLevel: 'normal' };
 
 /* An avatar is either a name the client looks up in its own table of drawings or
    a file sitting in public/faces. Either way it is checked here, so nothing can
@@ -308,7 +308,7 @@ class Room {
     if (!pending.length) return;
     this.botTimer = setTimeout(() => {
       const seat = pending[0];
-      const a = botAction(this.game.view(seat));
+      const a = botAction(this.game.view(seat), this.config.botLevel);
       if (a) this.game.act(seat, a);
       this.broadcast();
     }, 420 + Math.random() * 260);
@@ -416,6 +416,7 @@ function onConnection(conn, req) {
         if (m.rounds) r.config.rounds = Math.min(4, Math.max(1, Number(m.rounds) | 0));
         if (m.claimSeconds !== undefined) r.config.claimSeconds = Math.min(60, Math.max(0, Number(m.claimSeconds) | 0));
         if (m.bots !== undefined) r.config.bots = !!m.bots;
+        if (m.botLevel && LEVELS.includes(m.botLevel)) r.config.botLevel = m.botLevel;
         break;
       }
       case 'start': {

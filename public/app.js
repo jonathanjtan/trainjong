@@ -6,6 +6,11 @@ const q = new URLSearchParams(location.search);
 const TABLE_VIEW = q.get('view') === 'table';
 const ROOM = (q.get('room') || 'table').toLowerCase();
 const WINDS = ['東', '南', '西', '北'];
+const BOT_LEVELS = [
+  ['easy', 'plays its own tiles, and calls a discard because it is there'],
+  ['normal', 'counts how far it is from a win, and only calls when that shortens it'],
+  ['hard', 'also counts what is left in the wall, and folds when you look ready'],
+];
 const WIND_EN = ['East', 'South', 'West', 'North'];
 
 let ws = null, sync = null, backoff = 400, live = false;
@@ -1036,6 +1041,11 @@ function lobbySheet() {
   const rounds = [1, 2, 4].map((n) => `<button class="${r.config.rounds === n ? 'on' : ''}" data-a="rounds" data-n="${n}">${n === 1 ? '1 round (東)' : n === 2 ? '2 rounds' : '4 rounds'}</button>`).join('');
   const timers = [0, 10, 20, 45].map((n) => `<button class="${r.config.claimSeconds === n ? 'on' : ''}" data-a="timer" data-n="${n}">${n === 0 ? 'no timer' : `${n}s`}</button>`).join('');
 
+  const level = r.config.botLevel || 'normal';
+  const levels = BOT_LEVELS.map(([id, why]) => `<button class="${level === id ? 'on' : ''}"
+    data-a="botlevel" data-v="${id}" title="${why}">${id}</button>`).join('');
+  const levelNote = BOT_LEVELS.find(([id]) => id === level)?.[1] || '';
+
   const seatedNames = r.seats.filter((s) => s.name).length;
   const me = you.seat !== null ? r.seats[you.seat] : null;
   const info = r.scoringInfo;
@@ -1070,6 +1080,8 @@ function lobbySheet() {
       ${'vibrate' in navigator ? `<button class="${buzz ? 'on' : ''}" data-a="buzz">${buzz ? 'vibrate on' : 'vibrate off'}</button>` : ''}
       <button data-a="guide">How to play</button>
     </div>
+    ${r.config.bots ? `<div class="optrow"><span class="eyebrow">bots play</span>${levels}</div>
+    <div class="sub">${levelNote}</div>` : ''}
     <div class="sub" style="margin-top:8px">
       ${info.minFaan !== null && info.minFaan !== undefined ? `Minimum ${info.minFaan} faan · limit ${info.limitFaan} · ${info.payment === 'half' ? 'shooter pays double, others a quarter' : 'shooter pays the table'}` : ''}
       ${info.base ? `底 ${info.base} · 台 ${info.taiValue}` : ''}
@@ -1231,6 +1243,7 @@ document.addEventListener('click', (e) => {
     case 'rounds': send({ t: 'config', rounds: +b.dataset.n }); break;
     case 'timer': send({ t: 'config', claimSeconds: +b.dataset.n }); break;
     case 'bots': send({ t: 'config', bots: !sync.room.config.bots }); break;
+    case 'botlevel': send({ t: 'config', botLevel: b.dataset.v }); break;
     case 'start': send({ t: 'start' }); break;
     case 'restart': send({ t: 'restart' }); showLobby = true; showLastHand = false; break;
     case 'rematch': send({ t: 'rematch' }); showLastHand = false; break;

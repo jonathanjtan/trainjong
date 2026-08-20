@@ -1,11 +1,12 @@
 import assert from 'node:assert';
-import { counts, BY_CODE } from '../src/tiles.js';
-import { checkWin, waits, chowOptions, isSevenPairs, isThirteenOrphans } from '../src/hand.js';
+import { counts, BY_CODE, rng, shuffle, fullWall } from '../src/tiles.js';
+import { checkWin, waits, chowOptions, isSevenPairs, isThirteenOrphans, isTenpai, shanten, ukeire } from '../src/hand.js';
 import { scoreHK, faanToUnits, HK_DEFAULTS } from '../src/score/hk.js';
 import { scoreTaiwan } from '../src/score/taiwan.js';
 import { scoreRiichi } from '../src/score/riichi.js';
 import { Game } from '../src/game.js';
 import { VARIANTS } from '../src/variants.js';
+import { botAction, LEVELS } from '../src/bot.js';
 
 let pass = 0, fail = 0;
 function test(name, fn) {
@@ -328,6 +329,162 @@ test('claims: a declared win still waits on another seat that could also win', (
   assert.strictEqual(g.phase, 'claim', 'the far seat winning must not end it early');
   g.doClaim(near, { type: 'claimWin' });
   assert.strictEqual(g.result?.seat, near, 'the seat nearer the discarder takes the tile');
+});
+
+
+// ------------------------------------------------------------------- distance
+
+test('shanten: reads a hand’s distance from a win', () => {
+  assert.strictEqual(shanten(counts(T('p1 p2 p3 p4 p5 p6 s7 s8 s9 m2 m2 m2 zc zc')), 4), -1);
+  assert.strictEqual(shanten(counts(T('p1 p2 p3 p4 p5 p6 s7 s8 s9 m2 m2 m2 zc')), 4), 0);
+  assert.strictEqual(shanten(counts(T('p1 p2 p3 p4 p5 p6 s7 s8 s9 m2 m2 zc zf')), 4), 1);
+  assert.strictEqual(shanten(counts(T('p1 p4 p7 s2 s5 s8 m3 m6 m9 ze zs zw zn')), 4), 8);
+  // five sets plus a pair for the Taiwanese hand, and the melded shorthand
+  assert.strictEqual(shanten(counts(T('p1 p2 p3 p4 p5 p6 p7 p8 p9 s1 s2 s3 m2 m2 m2 zc zc')), 5), -1);
+  assert.strictEqual(shanten(counts(T('p1 p2 p3 s7 s8 s9 m2 m2 m2 zc')), 3), 0);
+});
+
+test('shanten: special hands only count while the hand is closed', () => {
+  const seven = counts(T('p1 p1 p3 p3 s5 s5 s9 s9 m2 m2 m7 m7 zc'));
+  assert.strictEqual(shanten(seven, 4, { sevenPairs: true }), 0);
+  assert.strictEqual(shanten(seven, 4, { sevenPairs: true, closed: false }), 3);
+  const orphans = counts(T('p1 p9 s1 s9 m1 m9 ze zs zw zn zc zf zb'));
+  assert.strictEqual(shanten(orphans, 4, { thirteen: true }), 0);
+  assert.strictEqual(shanten(orphans, 4, {}), 8);
+});
+
+test('shanten agrees with the win and wait checks across random hands', () => {
+  // one independent implementation checking another: `waits` gets there through
+  // checkWin, shanten through block counting, and they must not disagree
+  const rnd = rng(9871);
+  for (let i = 0; i < 400; i++) {
+    for (const need of [4, 3, 5]) {
+      const c = counts(shuffle(fullWall({ withBonus: false }), rnd).slice(0, 3 * need + 1));
+      const s = shanten(c, need, {});
+      assert.strictEqual(s === 0, isTenpai(c, need, {}), `shanten ${s} vs waits, need ${need}`);
+      assert.ok(s > 0 || s === 0, 'a 13-tile hand is never complete');
+      // and no hand is stuck: some draw always brings it one step closer
+      let closer = false, jumped = false;
+      for (let t = 0; t < 34; t++) {
+        if (c[t] >= 4) continue;
+        c[t]++;
+        const after = shanten(c, need, {});
+        c[t]--;
+        if (after === s - 1) closer = true;
+        if (after < s - 1) jumped = true;
+      }
+      assert.ok(closer && !jumped, `no single draw moves a ${s}-shanten hand exactly one step`);
+    }
+  }
+});
+
+test('ukeire: counts the useful draws that are still out there', () => {
+  const c = counts(T('p1 p2 p3 p4 p5 p6 s7 s8 s9 m2 m2 m5 m6'));
+  const open = ukeire(c, 4, {});
+  assert.strictEqual(open.shanten, 0);
+  assert.deepStrictEqual(open.kinds, T('m4 m7'), 'waiting on both ends of m5m6');
+  assert.strictEqual(open.tiles, 8);
+  // three of the four m4s already sitting in the river are three fewer draws
+  const seen = new Array(34).fill(0);
+  seen[BY_CODE.m4] = 3;
+  assert.strictEqual(ukeire(c, 4, {}, seen).tiles, 5);
+});
+
+// ------------------------------------------------------------------- the bots
+
+/* The bots only ever see a seat's view, so a test can hand them one directly. */
+function botView(over = {}) {
+  return {
+    phase: 'play', turn: 0, seat: 0, seatWind: 0, roundWind: 0, dealer: 0,
+    handSize: 13, setsNeeded: 4, useBonus: true, useRiichi: false,
+    useSevenPairs: false, useThirteen: true, needsValue: true,
+    wall: 60, melds: [[], [], [], []], discards: [[], [], [], []], river: [],
+    riichiSeats: [false, false, false, false], doraIndicators: [],
+    hand: [], legal: {}, ...over,
+  };
+}
+
+test('bot: a thinking discard keeps the shape and throws the loose tile', () => {
+  const hand = T('p1 p2 p3 p4 p5 p6 s7 s8 s9 m2 m2 m5 m6 zn');
+  const view = botView({ hand, legal: { discard: hand } });
+  for (const level of ['normal', 'hard']) {
+    // the lone north wind is the only tile that is not doing any work
+    assert.deepStrictEqual(botAction(view, level), { type: 'discard', tile: BY_CODE.zn }, level);
+  }
+});
+
+test('bot: hard folds to a riichi and throws a tile that seat has already passed', () => {
+  // p5 is doing real work in this hand, and it is the one tile seat 1 cannot
+  // ron — a bot that is defending gives up the shape, a bot that is not keeps it
+  const hand = T('p4 p5 p6 s2 s5 s8 m3 m6 m9 ze zs zw zn zc');
+  const view = botView({
+    hand,
+    legal: { discard: hand },
+    riichiSeats: [false, true, false, false],
+    discards: [[], T('p5'), [], []],
+    river: [{ seat: 1, tile: BY_CODE.p5, taken: false, riichi: true }],
+    wall: 40,
+  });
+  assert.deepStrictEqual(botAction(view, 'hard'), { type: 'discard', tile: BY_CODE.p5 });
+  const loose = botAction(view, 'normal').tile;
+  assert.ok(!T('p4 p5 p6').includes(loose), `normal broke a finished run: ${loose}`);
+});
+
+test('bot: hard pushes instead of folding when it is close itself', () => {
+  const hand = T('p1 p2 p3 p4 p5 p6 s7 s8 s9 m2 m2 m5 m6 zn');
+  const view = botView({
+    hand,
+    legal: { discard: hand },
+    riichiSeats: [false, true, false, false],
+    discards: [[], T('zn'), [], []],
+    river: [{ seat: 1, tile: BY_CODE.zn, taken: false, riichi: true }],
+  });
+  // tenpai and the safe tile happens to be the useless one — but the point is
+  // that it keeps its wait rather than dismantling the hand
+  const a = botAction(view, 'hard');
+  assert.strictEqual(a.tile, BY_CODE.zn);
+  assert.strictEqual(shanten(counts(hand.filter((t) => t !== BY_CODE.zn)), 4, {}), 0);
+});
+
+test('bot: a table minimum stops it opening a hand that could never pay', () => {
+  const junk = T('p2 p3 s5 s6 m8 m9 ze zs zw zn zc zf zb');
+  const offer = {
+    phase: 'claim', turn: 3,
+    lastDiscard: { seat: 3, tile: BY_CODE.p1, index: 0 },
+    legal: { chows: [T('p2 p3')], canPass: true },
+  };
+  for (const level of ['normal', 'hard']) {
+    assert.deepStrictEqual(botAction(botView({ hand: junk, ...offer }), level),
+      { type: 'pass' }, `${level} opened a three-suit hand under a faan minimum`);
+  }
+  // the same chow inside a one-suit hand is going somewhere, so it is taken
+  const flush = T('p2 p3 p5 p6 p7 p8 p9 p9 zc zc zf zf zb');
+  const a = botAction(botView({ hand: flush, ...offer }), 'hard');
+  assert.strictEqual(a.type, 'chow');
+  // and with no minimum to clear, the claim is judged on distance alone
+  const b = botAction(botView({ hand: junk, ...offer, needsValue: false }), 'hard');
+  assert.strictEqual(b.type, 'chow');
+});
+
+test('bot: every level plays a legal game to the end', () => {
+  for (const level of LEVELS) {
+    for (const variantId of ['hk-old', 'riichi']) {
+      const g = new Game({ variantId, seed: 5150, rounds: 1 });
+      g.startHand();
+      let guard = 0, hands = 0;
+      while (g.phase !== 'match-over' && hands < 6 && guard++ < 20000) {
+        if (g.phase === 'play' || g.phase === 'claim') {
+          const seat = g.phase === 'play' ? g.turn
+            : Object.keys(g.claim.options).filter((s) => !g.claim.responses[s]).map(Number)[0];
+          const a = botAction(g.view(seat), level);
+          assert.ok(a, `${level}/${variantId}: no action offered in ${g.phase}`);
+          const res = g.act(seat, a);
+          assert.ok(!res.error, `${level}/${variantId}: ${res.error} for ${JSON.stringify(a)}`);
+        } else if (g.phase === 'hand-over') { hands++; g.nextHand(); } else break;
+      }
+      assert.ok(hands >= 1, `${level}/${variantId} finished no hands`);
+    }
+  }
 });
 
 console.log(`\n${pass} passed, ${fail} failed`);
