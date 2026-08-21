@@ -776,15 +776,30 @@ body.claiming .mine .hint { display: none; }
    band under it lies back with the felt, but a name on its side reads as a
    mistake. Narrower, too, since five of them have one rim to share. */
 .plates.poly .nplate {
-  left: 50%;
-  top: 50%;
+  /* half of the most this plate can measure, so a clamp on its centre keeps the
+     whole of it on the board — the ring is drawn off the table's box, and the
+     table is fitted to the board, so on the axis the fit was tight against there
+     is no room outside it for a name: an upright board sent 南 and 中 55px off
+     the side, a wide one hung 東 34px below the screen with its name cut. */
+  --phw: min(15%, 84px);
+  --pht: 34px;
   max-width: min(30%, 168px);
-  transform: translate(-50%, -50%)
-    translate(calc(var(--sx, 0) * (var(--tblw, 240px) / 2 + 12px)),
-              calc(var(--sy, 1) * (var(--tblh, 240px) / 2 + 12px)));
+  left: clamp(var(--phw),
+              calc(50% + var(--sx, 0) * (var(--tblw, 240px) / 2 + 12px)),
+              calc(100% - var(--phw)));
+  top: clamp(var(--pht),
+             calc(50% + var(--sy, 1) * (var(--tblh, 240px) / 2 + 12px)),
+             calc(100% - var(--pht)));
+  transform: translate(-50%, -50%);
 }
 
-/* No gutter on that axis: the plate would land on the tiles, so it keeps to the
+/* Four seats only — a pentagon has no named edges, and its plates go out along
+   their own seat's heading instead (above). They still carry an e-* class, and
+   the fifth seat has no heading left to name so it borrows the near seat's, so
+   without :not(.poly) these rules would match five plates, cancel the transform
+   that puts them on the ring, and pile 東 and 中 in the same corner.
+
+   No gutter on that axis: the plate would land on the tiles, so it keeps to the
    corner of its own edge — each seat's own left, so the four still pinwheel.
    The corner is the table's, though, not the board's. Only the axis with no
    gutter has the two agreeing; the other one can run hundreds of pixels past the
@@ -795,19 +810,19 @@ body.claiming .mine .hint { display: none; }
    the side seats step above and below the table, the near and far ones to its
    left and right. Same clamps, so a board with no room either way still pins to
    its own corner, and the plate can never leave. */
-.plates:not(.vroom) .e-bottom {
+.plates:not(.vroom):not(.poly) .e-bottom {
   top: auto;
   bottom: 4px;
   left: max(calc(50% - var(--tblw, 0px) / 2 - 3px - var(--pw, 186px)), 2px);
   transform: none;
 }
-.plates:not(.vroom) .e-top {
+.plates:not(.vroom):not(.poly) .e-top {
   top: 2px;
   right: auto;
   left: min(calc(50% + var(--tblw, 0px) / 2 + 3px), calc(100% - var(--pw, 186px) - 2px));
   transform: none;
 }
-.plates:not(.hroom) .e-left {
+.plates:not(.hroom):not(.poly) .e-left {
   left: 4px;
   top: max(calc(50% - var(--tblh, 0px) / 2 - 47px), 2px);
   transform: none;
@@ -816,7 +831,7 @@ body.claiming .mine .hint { display: none; }
    the clamp has to clear a whole plate, and a plate is taller on the propped-up
    laptop than on a phone. Over-reserving only lowers it inside its own gutter;
    under-reserving hangs it off the bottom of the screen. */
-.plates:not(.hroom) .e-right {
+.plates:not(.hroom):not(.poly) .e-right {
   left: auto;
   right: 4px;
   top: min(calc(50% + var(--tblh, 0px) / 2 + 3px), calc(100% - 72px));
