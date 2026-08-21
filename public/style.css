@@ -756,11 +756,43 @@ body.claiming .mine .hint { display: none; }
 .plates .e-left { top: 50%; left: max(calc(50% - var(--tblw, 0px) / 2 - 3px - var(--pw, 186px)), 2px); transform: translateY(-50%); }
 .plates .e-right { top: 50%; left: min(calc(50% + var(--tblw, 0px) / 2 + 3px), calc(100% - var(--pw, 186px) - 2px)); transform: translateY(-50%); }
 /* No gutter on that axis: the plate would land on the tiles, so it keeps to the
-   corner of its own edge — each seat's own left, so the four still pinwheel. */
-.plates:not(.vroom) .e-bottom { left: 4px; top: auto; bottom: 4px; transform: none; }
-.plates:not(.vroom) .e-top { left: auto; right: 4px; top: 2px; transform: none; }
-.plates:not(.hroom) .e-left { top: 2px; left: 4px; transform: none; }
-.plates:not(.hroom) .e-right { top: auto; bottom: 4px; left: auto; right: 4px; transform: none; }
+   corner of its own edge — each seat's own left, so the four still pinwheel.
+   The corner is the table's, though, not the board's. Only the axis with no
+   gutter has the two agreeing; the other one can run hundreds of pixels past the
+   felt — an upright phone letterboxes the square table top and bottom, a wide
+   screen leaves felt either side — and a plate sent to the board's corner
+   strands itself out there with no seat anywhere near it. So the free axis
+   borrows the gutter the other edges use, which is where the room actually is:
+   the side seats step above and below the table, the near and far ones to its
+   left and right. Same clamps, so a board with no room either way still pins to
+   its own corner, and the plate can never leave. */
+.plates:not(.vroom) .e-bottom {
+  top: auto;
+  bottom: 4px;
+  left: max(calc(50% - var(--tblw, 0px) / 2 - 3px - var(--pw, 186px)), 2px);
+  transform: none;
+}
+.plates:not(.vroom) .e-top {
+  top: 2px;
+  right: auto;
+  left: min(calc(50% + var(--tblw, 0px) / 2 + 3px), calc(100% - var(--pw, 186px) - 2px));
+  transform: none;
+}
+.plates:not(.hroom) .e-left {
+  left: 4px;
+  top: max(calc(50% - var(--tblh, 0px) / 2 - 47px), 2px);
+  transform: none;
+}
+/* 72px, not the 44 the near seat's edge clamps by: this one is top-anchored, so
+   the clamp has to clear a whole plate, and a plate is taller on the propped-up
+   laptop than on a phone. Over-reserving only lowers it inside its own gutter;
+   under-reserving hangs it off the bottom of the screen. */
+.plates:not(.hroom) .e-right {
+  left: auto;
+  right: 4px;
+  top: min(calc(50% + var(--tblh, 0px) / 2 + 3px), calc(100% - 72px));
+  transform: none;
+}
 
 .nplate {
   display: flex;
