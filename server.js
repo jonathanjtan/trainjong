@@ -65,27 +65,59 @@ function faces() {
 }
 
 const cache = new Map();
+/* png/jpg/webp/gif are compressed already — gzipping them again costs real time
+   and buys back nothing, which matters now that a face is read on demand. */
+const PACKED = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif']);
+function entry(buf, name) {
+  const ext = path.extname(name).toLowerCase();
+  return {
+    buf,
+    gz: buf.length > 512 && !PACKED.has(ext) ? zlib.gzipSync(buf, { level: 9 }) : null,
+    type: MIME[ext] || 'application/octet-stream',
+    etag: `"${crypto.createHash('sha1').update(buf).digest('base64url').slice(0, 16)}"`,
+  };
+}
 function loadStatic() {
   cache.clear();
   const walk = (dir, base = '') => {
     for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
       const p = path.join(dir, e.name);
       const rel = `${base}/${e.name}`;
+      // the faces are not part of the app: there can be hundreds of megabytes of
+      // them, and holding that in memory (and re-reading it all under DEV) costs
+      // far more than reading the handful anyone actually looks at. faceFile()
+      // serves them one at a time instead.
+      if (p === FACE_DIR) continue;
       if (e.isDirectory()) walk(p, rel);
-      else {
-        const buf = fs.readFileSync(p);
-        cache.set(rel, {
-          buf,
-          gz: buf.length > 512 ? zlib.gzipSync(buf, { level: 9 }) : null,
-          type: MIME[path.extname(e.name)] || 'application/octet-stream',
-          etag: `"${crypto.createHash('sha1').update(buf).digest('base64url').slice(0, 16)}"`,
-        });
-      }
+      else cache.set(rel, entry(fs.readFileSync(p), e.name));
     }
   };
   if (fs.existsSync(PUBLIC)) walk(PUBLIC);
 }
 loadStatic();
+
+/* Faces are read one at a time, on request, and only then remembered. That is
+   what lets a face dropped in while the server is up be served as soon as it is
+   listed, and it is what keeps a folder of hundreds out of memory.
+
+   Two things are checked before anything is opened: the resolved path has to
+   still be inside public/faces after `..` and friends have had their say, and
+   the extension has to be one of the picture kinds. Nothing else under the
+   directory is reachable, and nothing above it is. */
+function faceFile(url) {
+  if (!url.startsWith('/faces/')) return null;
+  const full = path.resolve(FACE_DIR, url.slice(7));
+  if (full !== FACE_DIR && !full.startsWith(FACE_DIR + path.sep)) return null;
+  if (!FACE_EXT.has(path.extname(full).toLowerCase())) return null;
+  let buf;
+  try {
+    if (!fs.statSync(full).isFile()) return null;
+    buf = fs.readFileSync(full);
+  } catch { return null; }
+  const f = entry(buf, full);
+  cache.set(url, f);
+  return f;
+}
 
 let guideCache = null;
 function serveGuide(req, res) {
@@ -120,7 +152,8 @@ function serve(req, res) {
   try { url = decodeURIComponent(url); } catch { /* leave it as it came */ }
   if (url === '/guide.json') return serveGuide(req, res);
   if (url === '/') url = '/index.html';
-  const file = cache.get(url) || (path.extname(url) === '' ? cache.get('/index.html') : null);
+  const file = cache.get(url) || faceFile(url)
+    || (path.extname(url) === '' ? cache.get('/index.html') : null);
   if (!file) {
     res.writeHead(404, { 'content-type': 'text/plain' });
     res.end('not found');
