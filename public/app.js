@@ -5,7 +5,7 @@ const $ = (id) => document.getElementById(id);
 const q = new URLSearchParams(location.search);
 const TABLE_VIEW = q.get('view') === 'table';
 const ROOM = (q.get('room') || 'table').toLowerCase();
-const WINDS = ['東', '南', '西', '北'];
+const WINDS = ['東', '南', '西', '北', '中', '發', '白'];
 const BOT_LEVELS = [
   ['easy', 'plays its own tiles, and calls a discard because it is there'],
   ['normal', 'counts how far it is from a win, and only calls when that shortens it'],
@@ -301,7 +301,7 @@ function once(key) {
   return true;
 }
 const seatName = (s) => sync?.room.seats[s]?.name || `Seat ${s + 1}`;
-const windOf = (seat, dealer) => (seat - dealer + 4) % 4;
+const windOf = (seat, dealer, n = 4) => (seat - dealer + n) % n;
 
 // -------------------------------------------------------------------- render
 
@@ -385,9 +385,16 @@ function renderTable(g) {
     return;
   }
   const me = g.seat === null || g.seat === undefined ? 0 : g.seat;
+  const n = g.seats || 4;
   // turn order runs counter-clockwise, so the seat after yours sits on your right
-  const at = { bottom: me, right: (me + 1) % 4, top: (me + 2) % 4, left: (me + 3) % 4 };
-  board.innerHTML = simpleLayout ? flatTable(g, at) : arenaTable(g, at);
+  const order = Array.from({ length: n }, (_, k) => (me + k) % n);
+  // The flat table is a three-by-three grid and has only four cells to give, so
+  // a bigger table always gets the polygon.
+  if (simpleLayout && n === 4) {
+    board.innerHTML = flatTable(g, { bottom: order[0], right: order[1], top: order[2], left: order[3] });
+    return;
+  }
+  board.innerHTML = arenaTable(g, order);
 }
 
 /* The same table the arena draws — each seat's melds along their own edge, their
@@ -453,6 +460,50 @@ function fband(g, seat, dir) {
 const POND_COLS = 6;
 const DIRS = ['bottom', 'right', 'top', 'left'];
 
+/* The square table is one case of a regular N-gon, and writing it that way is
+   what lets five seats reuse every line of it.
+
+   A band spans one side of the polygon and is spun about the centre, so the two
+   numbers the stylesheet needs are how far the centre is from a side — the
+   apothem, side / (2·tan(π/N)) — and how big a box the whole thing needs. Both
+   come out of the side length, so both are pure multipliers on it, which
+   matters: fitArena() solves the table's size as a straight line in --dw, and a
+   constant factor keeps it straight.
+
+   At N = 4 the apothem is exactly half the side and the box is exactly the
+   side, which is the geometry that was here before — the square is not a
+   special case in the code, it just happens to be one in the arithmetic. */
+function polygon(n) {
+  const R = 1 / (2 * Math.sin(Math.PI / n));      // circumradius, in sides
+  // vertices, with a flat side at the bottom and the first vertex to its left
+  const xs = [], ys = [];
+  for (let k = 0; k < n; k++) {
+    const a = -Math.PI / 2 + ((2 * k + 1) * Math.PI) / n;
+    xs.push(Math.cos(a)); ys.push(Math.sin(a));
+  }
+  const w = R * (Math.max(...xs) - Math.min(...xs));
+  const h = R * (Math.max(...ys) - Math.min(...ys));
+  return {
+    apof: 1 / (2 * Math.tan(Math.PI / n)),        // 0.5 at N=4
+    boxf: Math.max(w, h),                         // 1.0 at N=4
+    step: 360 / n,
+  };
+}
+
+/** the rotation that carries the bottom band round to seat k */
+const seatRot = (k, n) => 0 - k * (360 / n);   // 0 - 0 is +0; -k would hand the stylesheet a -0
+
+/* Which way is "out" for seat k, as a unit vector in screen coordinates. CSS
+   rotate(θ) sends (0,1) — straight down, where the near seat sits — to
+   (−sin θ, cos θ), so the same angle that turns the band also aims the name.
+   Handing the stylesheet the vector rather than the angle is what lets the
+   names ride an ellipse: the tilted table is wider than it is tall, and a
+   circle of plates around it would sit wrong at the top and bottom. */
+function outward(k, n) {
+  const r = (seatRot(k, n) * Math.PI) / 180;
+  return { sx: -Math.sin(r), sy: Math.cos(r) };
+}
+
 /* The pond has a fixed height so the four bands stay the same size, which means
    we have to know up front how many rows the longest one wants. Mirrors what
    flex wrap will do: fill greedily, and count a sideways riichi tile as wider. */
@@ -466,13 +517,20 @@ function pondRows(river, seat) {
   return rows;
 }
 
-function arenaTable(g, at) {
-  const prows = Math.max(3, ...[0, 1, 2, 3].map((s) => pondRows(g.river, s)));
-  return `<div class="arena" style="--prows:${prows};--cols:${POND_COLS}">
-    ${DIRS.map((dir) => band(g, at[dir], dir)).join('')}
-    ${centre(g, at)}
+function arenaTable(g, order) {
+  const n = order.length;
+  const p = polygon(n);
+  const prows = Math.max(3, ...order.map((s) => pondRows(g.river, s)));
+  const vars = `--prows:${prows};--cols:${POND_COLS};--N:${n};`
+    + `--apof:${p.apof.toFixed(5)};--boxf:${p.boxf.toFixed(5)}`;
+  // The square keeps the hand-tuned plate corners it already had; anything else
+  // hangs its names off the rim at the angle of its own seat.
+  const poly = n === 4 ? '' : ' poly';
+  return `<div class="arena${poly}" style="${vars}">
+    ${order.map((seat, k) => band(g, seat, k, n)).join('')}
+    ${centre(g, order)}
   </div>
-  <div class="plates">${DIRS.map((dir) => plate(g, at[dir], dir)).join('')}</div>`;
+  <div class="plates${poly}" style="${vars}">${order.map((seat, k) => plate(g, seat, k, false, n)).join('')}</div>`;
 }
 
 /* The arena's names float off the table: on it they would have to lie back with
@@ -493,7 +551,13 @@ function faceEl(who, chosen) {
   return avatarSVG(avatarFor(who, chosen));
 }
 
-function plate(g, seat, dir, withScore = false) {
+function plate(g, seat, k, withScore = false, n = 4) {
+  const dir = typeof k === 'string' ? k : DIRS[k] || 'bottom';
+  let spin = '';
+  if (typeof k === 'number') {
+    const o = outward(k, n);
+    spin = ` style="--a:${seatRot(k, n)}deg;--sx:${o.sx.toFixed(4)};--sy:${o.sy.toFixed(4)}"`;
+  }
   const s = sync.room.seats[seat];
   const chips = [
     g.dealer === seat ? '<span class="chip cjk">莊</span>' : '',
@@ -502,10 +566,10 @@ function plate(g, seat, dir, withScore = false) {
     s.name && !s.connected ? '<span class="chip off">away</span>' : '',
     g.phase === 'claim' && g.claimPending?.includes(seat) ? '<span class="chip">…</span>' : '',
   ].filter(Boolean).join('');
-  return `<div class="nplate ${EDGE[dir]} ${g.turn === seat && g.phase !== 'hand-over' ? 'turn' : ''} ${seat === g.seat ? 'me' : ''}">
+  return `<div class="nplate ${EDGE[dir] || ''} ${g.turn === seat && g.phase !== 'hand-over' ? 'turn' : ''} ${seat === g.seat ? 'me' : ''}"${spin}>
     <span class="face">${faceEl(s.bot ? seat : s.name || seat, s.avatar)}</span>
     <span class="who">
-      <span class="line"><span class="wind cjk">${WINDS[windOf(seat, g.dealer)]}</span>
+      <span class="line"><span class="wind cjk">${WINDS[windOf(seat, g.dealer, g.seats || 4)]}</span>
         <span class="nm">${esc(s.name || '—')}</span></span>
       <span class="line">${withScore ? `<span class="sc num ${g.scores[seat] < 0 ? 'neg' : ''}">${g.scores[seat]}</span>` : ''}${chips}</span>
     </span>
@@ -543,12 +607,12 @@ function seatParts(g, seat) {
   return { pond, melds };
 }
 
-function band(g, seat, dir) {
+function band(g, seat, k, n) {
   const { pond, melds } = seatParts(g, seat);
   // the arena has the edge to spare, so it draws the concealed tiles one by one
   const wall = showsWall(g, seat)
     ? `<div class="backs">${Array.from({ length: g.handCounts[seat] }, () => tileEl(0, { back: true })).join('')}</div>` : '';
-  return `<div class="band b-${dir}">
+  return `<div class="band" style="--rot:${seatRot(k, n)}deg">
     <div class="pond">${pond}</div>
     <div class="bandedge">
       <div class="bcontent">${wall}${melds ? `<div class="bmelds">${melds}</div>` : ''}</div>
@@ -559,16 +623,19 @@ function band(g, seat, dir) {
 /* The little slab in the middle: round and wall in the centre, the four scores
    around the rim, each turned towards the seat it belongs to. Whoever is to
    play has their side lit — that replaces the arrow the flat layout uses. */
-function centre(g, at) {
-  const score = (dir) => {
-    const seat = at[dir];
+function centre(g, order) {
+  const n = order.length;
+  const score = (seat, k) => {
     const on = g.turn === seat && g.phase !== 'hand-over';
-    return `<div class="sc s-${dir} ${on ? 'on' : ''}"><span>
-      <b class="cjk">${WINDS[windOf(seat, g.dealer)]}</b>
+    // each readout is turned to face its own seat, which is the same angle the
+    // seat's band was turned by
+    const cell = n === 4 ? ` s-${DIRS[k]}` : '';
+    return `<div class="sc${cell} ${on ? 'on' : ''}" style="--a:${seatRot(k, n)}deg"><span>
+      <b class="cjk">${WINDS[windOf(seat, g.dealer, n)]}</b>
       <i class="num ${g.scores[seat] < 0 ? 'neg' : ''}">${g.scores[seat]}</i></span></div>`;
   };
-  return `<div class="chub">
-    ${DIRS.map(score).join('')}
+  return `<div class="chub${n === 4 ? '' : ' poly'}" style="--N:${n}">
+    ${order.map(score).join('')}
     <div class="mid">
       <div class="rw"><span class="cjk">${WINDS[g.roundWind]}</span><i class="num">${g.handNo}</i></div>
       <div class="wl num">×${g.wall}</div>

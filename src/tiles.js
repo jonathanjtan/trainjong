@@ -36,8 +36,8 @@ export const LABELS = (() => {
   return a;
 })();
 
-export const WIND_LABEL = ['東', '南', '西', '北'];
-export const WIND_NAME = ['East', 'South', 'West', 'North'];
+export const WIND_LABEL = ['東', '南', '西', '北', '中', '發', '白'];
+export const WIND_NAME = ['East', 'South', 'West', 'North', 'Centre', 'Prosperity', 'White'];
 
 export const suited = (t) => t < HONOR;
 export const suit = (t) => (t < HONOR ? (t / 9) | 0 : -1); // 0 dots 1 bamboo 2 chars

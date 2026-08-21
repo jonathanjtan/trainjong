@@ -7,6 +7,9 @@ const PORT = 8123 + (process.pid % 200);
 const VARIANT = process.argv[2] || 'hk-old';
 const HANDS = Number(process.argv[3] || 3);
 const LEVEL = process.argv[4] || 'normal';
+// the table is as big as the rules ask for — 五方 seats five
+const { VARIANTS } = await import('../src/variants.js');
+const SEATS = VARIANTS[VARIANT]?.seats || 4;
 
 const server = spawn(process.execPath, ['server.js'], {
   cwd: new URL('..', import.meta.url).pathname,
@@ -84,7 +87,7 @@ function step(c) {
   if (a) send(c, { t: 'action', action: a });
 }
 
-for (let i = 0; i < 4; i++) await makeClient(i);
+for (let i = 0; i < SEATS; i++) await makeClient(i);
 await sleep(300);
 for (const c of clients) step(c);
 

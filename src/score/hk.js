@@ -45,6 +45,7 @@ export const HK_DEFAULTS = {
   minFaan: 3,
   limitFaan: 13,
   payment: 'shooter-all',  // 'shooter-all' | 'half'
+  seatFlowers: true,       // 正花 — off at any table size but four (see FIVE.md §4)
   dealerBonus: 1,          // multiplier on the dealer's win/loss (1 = none)
   baseUnit: 1,
   table: HK_TABLE,
@@ -74,7 +75,7 @@ export function scoreHK(ctx, options = {}) {
   const opts = { ...HK_DEFAULTS, ...options, table: { ...HK_TABLE, ...(options.table || {}) } };
   const T = opts.table;
   const melds = ctx.melds || [];
-  const need = 4 - melds.length;
+  const need = (ctx.setsNeeded || 4) - melds.length;
   const closed = melds.every((m) => !m.open);
   const res = checkWin(ctx.concealed, need, { thirteen: true, closed });
   if (!res.ok) return { win: false };
@@ -93,7 +94,10 @@ export function scoreHK(ctx, options = {}) {
   if (ctx.flags?.rinshan) add('kongBloom', '槓上開花', 'Win on kong replacement', T.kongBloom);
   if (ctx.flags?.lastTile) add('lastTile', ctx.selfDraw ? '海底撈月' : '河底撈魚', 'Last tile of the wall', T.lastTile);
 
-  for (const b of bonusScore(ctx.bonusTiles || [], ctx.seatWind, T)) situational.push(b);
+  // Eight bonus tiles onto four seats cannot be shared out evenly at five, so
+  // 正花 is switched off there and only the seat-blind suites remain.
+  const flowerSeat = opts.seatFlowers === false ? -1 : ctx.seatWind;
+  for (const b of bonusScore(ctx.bonusTiles || [], flowerSeat, T)) situational.push(b);
 
   const kongCount = melds.filter((m) => m.type === 'kong').length;
   if (kongCount === 4) add('fourKongs', '四槓子', 'Four kongs', T.fourKongs);
@@ -133,7 +137,7 @@ export function scoreHK(ctx, options = {}) {
     units,
     patterns: best.patterns,
     label: `${capped} faan${capped >= opts.limitFaan ? ' (limit)' : ''}`,
-    deltas: eligible ? payments(units, ctx, opts) : [0, 0, 0, 0],
+    deltas: eligible ? payments(units, ctx, opts) : new Array(ctx.seats || 4).fill(0),
   };
 }
 
@@ -172,32 +176,39 @@ function patternsFor(sh, ctx, T, melds) {
     if (sh.allSimples) push('allSimples', '斷么九', 'All simples', T.allSimples);
   } else if (sh.allSimples) push('allSimples', '斷么九', 'All simples', T.allSimples);
 
-  if (melds.length === 4 && melds.every((m) => m.open) && !ctx.selfDraw) {
+  if (melds.length === (ctx.setsNeeded || 4) && melds.every((m) => m.open) && !ctx.selfDraw) {
     push('allMelded', '全求人', 'All melded, won on discard', T.allMelded);
   }
   void wind; void E;
   return out;
 }
 
+/**
+ * Half-shooter, stated so it survives a change of table size: the bystanders
+ * pay half a unit each and the shooter covers the balance. Holding the winner's
+ * income at (n-1) units however the hand was won then fixes the shooter's share
+ * at n/2 — which is 2 at four seats, exactly the printed rule.
+ */
 function payments(units, ctx, opts) {
-  const d = [0, 0, 0, 0];
+  const n = ctx.seats || 4;
+  const d = new Array(n).fill(0);
   const winner = ctx.seat;
   const mult = (seat) => (opts.dealerBonus !== 1 && (seat === ctx.dealer || winner === ctx.dealer) ? opts.dealerBonus : 1);
   if (ctx.selfDraw) {
-    for (let s = 0; s < 4; s++) {
+    for (let s = 0; s < n; s++) {
       if (s === winner) continue;
       const amt = units * mult(s);
       d[s] -= amt; d[winner] += amt;
     }
   } else if (opts.payment === 'half') {
-    for (let s = 0; s < 4; s++) {
+    for (let s = 0; s < n; s++) {
       if (s === winner) continue;
-      const amt = s === ctx.discarder ? units * 2 : units / 2;
+      const amt = s === ctx.discarder ? units * (n / 2) : units / 2;
       const v = Math.round(amt * mult(s));
       d[s] -= v; d[winner] += v;
     }
   } else {
-    const amt = Math.round(units * 3 * mult(ctx.discarder));
+    const amt = Math.round(units * (n - 1) * mult(ctx.discarder));
     d[ctx.discarder] -= amt; d[winner] += amt;
   }
   return d;

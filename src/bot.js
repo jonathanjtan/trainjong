@@ -120,6 +120,23 @@ function seenCounts(view) {
 
 const live = (ctx, t) => Math.max(0, 4 - (ctx.seen ? ctx.seen[t] : 0));
 
+/** draws this seat can still expect before the wall runs out */
+const drawsLeft = (view) => Math.floor((view.wall || 0) / (view.seats || 4));
+
+/* What reaching tenpai before the wall dies is worth. Under the pairwise rule
+   the answer does not depend on how many others get there: flipping yourself
+   from noten to tenpai moves you by penalty × (n-1) either way, because you
+   stop paying every tenpai seat and start collecting from every noten one.
+   A fixed pot depends on the split, so the pot itself stands in for it. */
+function notenSwing(view) {
+  const p = view.notenPenalty || 0;
+  if (!p) return 0;
+  return view.notenPairwise ? p * ((view.seats || 4) - 1) : p;
+}
+
+/** the stretch of a hand where a tenpai settlement is a live consideration */
+const endgame = (view) => notenSwing(view) > 0 && drawsLeft(view) <= 4;
+
 // -------------------------------------------------------------------- the turn
 
 function playedAction(view, prof) {
@@ -167,6 +184,14 @@ function pickDiscard(view, ctx, opts, danger, folding) {
     };
   });
   if (folding) {
+    // Late in a hand that pays for tenpai, a fold is not a surrender. Keep the
+    // wait if anything safe enough keeps it: the bonus below is the price in
+    // danger this seat will pay to still be waiting when the wall runs out.
+    if (endgame(view)) {
+      const bonus = (s) => (s.dist === 0 ? 0.35 : 0);
+      scored.sort((a, b) => (a.risk - bonus(a)) - (b.risk - bonus(b)) || a.dist - b.dist || b.draws - a.draws);
+      return scored[0].tile;
+    }
     scored.sort((a, b) => a.risk - b.risk || a.dist - b.dist || b.draws - a.draws);
     return scored[0].tile;
   }
@@ -254,7 +279,13 @@ function claimDecision(view, ctx) {
     const draws = ukeire(c, ctx.need - 1, { ...ctx.opts, closed: false }, ctx.seen).tiles;
     for (const t of cand.use) c[t]++;
     if (after >= before) continue;                       // the claim bought nothing
-    if (!worthOpening(view, ctx, cand, tile)) continue;
+    // 形式聴牌. Once the wall is nearly out and the rules pay for tenpai, a claim
+    // that reaches a wait pays for itself through the settlement — even when the
+    // hand it leaves behind is a plain run of simples that could never legally
+    // be declared. Refusing it on value grounds is exactly the mistake the noten
+    // penalty exists to punish, so the value gate comes off here and only here.
+    if (after > 0 && !worthOpening(view, ctx, cand, tile)) continue;
+    if (after === 0 && !endgame(view) && !worthOpening(view, ctx, cand, tile)) continue;
     if (!best || after < best.after || (after === best.after && draws > best.draws)) {
       best = { ...cand, after, draws };
     }
@@ -306,7 +337,8 @@ function worthOpening(view, ctx, cand, tile) {
    stated outright; everyone else is read from their melds. */
 function threats(view, ctx) {
   const out = [];
-  for (let s = 0; s < 4; s++) {
+  const n = view.seats || 4;
+  for (let s = 0; s < n; s++) {
     if (s === ctx.seat) continue;
     let level = 0, riichiAt = -1;
     if (view.riichiSeats?.[s]) {
@@ -318,7 +350,7 @@ function threats(view, ctx) {
       let value = false;
       for (const m of open) {
         if (suited(m.tile)) bySuit[suit(m.tile)]++;
-        if (honor(m.tile) && (dragon(m.tile) || m.tile === E + ((s - view.dealer + 4) % 4) || m.tile === E + view.roundWind)) value = true;
+        if (honor(m.tile) && (dragon(m.tile) || m.tile === E + ((s - view.dealer + n) % n) || m.tile === E + view.roundWind)) value = true;
       }
       if (open.length >= 3) level = 0.75;
       else if (open.length >= 2 && (value || Math.max(...bySuit) === open.length)) level = 0.6;
@@ -379,10 +411,18 @@ function riskOf(tile, view, ctx, danger) {
 }
 
 /* Fold when someone is clearly waiting and this hand is too far out to race
-   them. Tenpai and one-away hands push — that is the whole point of being close. */
+   them. Tenpai and one-away hands push — that is the whole point of being close.
+
+   Where the rules charge for noten, the endgame stops being a straight choice
+   between winning and staying safe: a hand that reaches tenpai before the wall
+   dies collects from everyone who did not, so it is worth pushing one step
+   further — but only once the draw is actually in sight, which is what
+   `endgame` checks. Give up on that too early and the penalty just becomes a
+   tax on the timid. */
 function shouldFold(view, ctx, danger) {
   const worst = Math.max(...danger.map((t) => t.level));
   if (worst < 0.6) return false;
   const dist = shanten(counts(view.hand), ctx.need, ctx.opts);
-  return dist >= (worst >= 1 ? 2 : 3);
+  const base = worst >= 1 ? 2 : 3;
+  return dist >= (endgame(view) ? base + 1 : base);
 }

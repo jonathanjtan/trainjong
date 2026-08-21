@@ -8,7 +8,7 @@ import { scoreRiichi, doraOf } from './score/riichi.js';
 import { variant as getVariant } from './variants.js';
 
 const SCORERS = { hk: scoreHK, taiwan: scoreTaiwan, riichi: scoreRiichi };
-const next = (s) => (s + 1) % 4;
+const next = (s, n) => (s + 1) % n;
 
 // Claim priority: a win beats a pung/kong, which beats a chow.
 const WIN = 3, PUNG = 2, CHOW = 1, PASS = 0;
@@ -21,14 +21,17 @@ const potentialRank = (o) => (o.win ? WIN
     : o.chows?.length ? CHOW : PASS);
 
 export class Game {
-  constructor({ variantId = 'hk-old', seed = Date.now(), rounds = 4, names = ['', '', '', ''] } = {}) {
+  constructor({ variantId = 'hk-old', seed = Date.now(), rounds = 4, seats, names } = {}) {
     this.v = getVariant(variantId);
     this.variantId = this.v.id;
+    // The table size is the variant's, unless the caller overrides it — which is
+    // how you run one rule set at four seats and at five and compare the two.
+    this.n = seats || this.v.seats || 4;
     this.rounds = rounds;
-    this.names = names;
+    this.names = names || new Array(this.n).fill('');
     this.seed = seed >>> 0;
     this.rand = rng(this.seed);
-    this.scores = [0, 1, 2, 3].map(() => this.v.startScore);
+    this.scores = new Array(this.n).fill(this.v.startScore);
     this.roundWind = 0;
     this.dealer = 0;
     this.handNo = 0;
@@ -50,15 +53,16 @@ export class Game {
     this.doraIndicators = [];
     this.uraIndicators = [];
     this.doraFlipped = 0;
-    this.hands = [[], [], [], []];
-    this.melds = [[], [], [], []];
-    this.bonus = [[], [], [], []];
-    this.discards = [[], [], [], []];
+    const perSeat = () => Array.from({ length: this.n }, () => []);
+    this.hands = perSeat();
+    this.melds = perSeat();
+    this.bonus = perSeat();
+    this.discards = perSeat();
     this.river = [];
-    this.riichi = [null, null, null, null];   // {turn, double, ippatsu}
-    this.furiten = [false, false, false, false];
-    this.tempFuriten = [false, false, false, false];
-    this.declaredNoWin = [false, false, false, false];
+    this.riichi = new Array(this.n).fill(null);   // {turn, double, ippatsu}
+    this.furiten = new Array(this.n).fill(false);
+    this.tempFuriten = new Array(this.n).fill(false);
+    this.declaredNoWin = new Array(this.n).fill(false);
     this.turn = this.dealer;
     this.drawn = null;
     this.lastDiscard = null;
@@ -74,12 +78,12 @@ export class Game {
     this.flags = {};
     this.handNo++;
 
-    for (let i = 0; i < 4; i++) {
-      const seat = (this.dealer + i) % 4;
+    for (let i = 0; i < this.n; i++) {
+      const seat = (this.dealer + i) % this.n;
       this.hands[seat] = this.wall.splice(0, v.handSize);
     }
     if (v.dora) this.flipDora();
-    for (let i = 0; i < 4; i++) this.settleBonus((this.dealer + i) % 4);
+    for (let i = 0; i < this.n; i++) this.settleBonus((this.dealer + i) % this.n);
 
     this.push(`Hand ${this.handNo} — ${WIND_LABEL[this.roundWind]} round, dealer is seat ${this.dealer + 1}`);
     this.drawTile(this.dealer, { first: true });
@@ -128,7 +132,7 @@ export class Game {
     this.turn = seat;
     this.flags = { rinshan, haitei: this.wall.length === 0 };
     if (first && seat === this.dealer && this.firstGoAround) this.flags.tenhou = true;
-    else if (this.firstGoAround && this.turnsTaken < 4) this.flags.chiihou = seat !== this.dealer;
+    else if (this.firstGoAround && this.turnsTaken < this.n) this.flags.chiihou = seat !== this.dealer;
 
     if (this.v.bonusTiles && bonus(tile)) {
       this.bonus[seat].push(this.hands[seat].pop());
@@ -175,7 +179,9 @@ export class Game {
       bonusTiles: this.bonus[seat],
       winTile,
       selfDraw,
-      seatWind: (seat - this.dealer + 4) % 4,
+      seats: this.n,
+      setsNeeded: this.v.setsNeeded,
+      seatWind: (seat - this.dealer + this.n) % this.n,
       roundWind: this.roundWind,
       dealer: this.dealer,
       discarder: selfDraw ? null : (this.pendingKong ? this.pendingKong.seat : this.lastDiscard?.seat ?? null),
@@ -309,8 +315,8 @@ export class Game {
   openClaims(from, tile, kind) {
     const options = {};
     let any = false;
-    for (let i = 1; i < 4; i++) {
-      const seat = (from + i) % 4;
+    for (let i = 1; i < this.n; i++) {
+      const seat = (from + i) % this.n;
       const o = this.claimOptionsFor(seat, from, tile, kind);
       if (o) { options[seat] = o; any = true; }
     }
@@ -340,7 +346,7 @@ export class Game {
     if (c[tile] >= 2) o.pung = true;
     if (c[tile] === 3) o.kong = tile;
     const chows = chowOptions(c, tile);
-    if (chows.length && (!this.v.chowFromLeftOnly || next(from) === seat)) o.chows = chows;
+    if (chows.length && (!this.v.chowFromLeftOnly || next(from, this.n) === seat)) o.chows = chows;
     return Object.keys(o).length ? o : null;
   }
 
@@ -395,7 +401,7 @@ export class Game {
     const winners = Object.entries(responses).filter(([, a]) => a.type === 'claimWin').map(([s]) => +s);
     if (winners.length) {
       // nearest player counter-clockwise from the discarder takes it
-      winners.sort((a, b) => ((a - from + 4) % 4) - ((b - from + 4) % 4));
+      winners.sort((a, b) => ((a - from + this.n) % this.n) - ((b - from + this.n) % this.n));
       const seat = winners[0];
       this.claim = null;
       if (kind === 'discard' && this.lastDiscard) this.river[this.lastDiscard.index].taken = true;
@@ -417,7 +423,7 @@ export class Game {
     this.claim = null;
     this.river[this.lastDiscard.index].taken = true;
     this.firstGoAround = false;
-    for (let s = 0; s < 4; s++) if (this.riichi[s]) this.riichi[s].ippatsu = false;
+    for (let s = 0; s < this.n; s++) if (this.riichi[s]) this.riichi[s].ippatsu = false;
 
     const c = this.hands[seat];
     const take = (t) => {
@@ -456,8 +462,8 @@ export class Game {
     // belt and braces: a kong window never advances the turn
     if (kind === 'kong') return this.afterKongReplacement();
     if (kind === 'discard' && this.wall.length === 0) return this.exhaustiveDraw();
-    const seat = next(from);
-    if (this.turnsTaken >= 4) this.firstGoAround = false;
+    const seat = next(from, this.n);
+    if (this.turnsTaken >= this.n) this.firstGoAround = false;
     return this.drawTile(seat) || { ok: true };
   }
 
@@ -467,7 +473,7 @@ export class Game {
     const opt = options.find((o) => o.tile === tile && (!kongType || o.type === kongType));
     if (!opt) return { error: 'cannot kong that tile' };
     this.firstGoAround = false;
-    for (let s = 0; s < 4; s++) if (this.riichi[s]) this.riichi[s].ippatsu = false;
+    for (let s = 0; s < this.n; s++) if (this.riichi[s]) this.riichi[s].ippatsu = false;
 
     if (opt.type === 'concealed') {
       for (let i = 0; i < 4; i++) this.hands[seat].splice(this.hands[seat].indexOf(tile), 1);
@@ -516,7 +522,7 @@ export class Game {
     const hand = this.hands[seat].slice();
     if (!selfDraw) hand.push(winTile);
     const deltas = w.deltas.slice();
-    for (let s = 0; s < 4; s++) this.scores[s] += deltas[s];
+    for (let s = 0; s < this.n; s++) this.scores[s] += deltas[s];
     if (w.potClaimed) this.riichiPot -= w.potClaimed;
     this.result = {
       kind: 'win',
@@ -544,21 +550,33 @@ export class Game {
   }
 
   exhaustiveDraw() {
+    const n = this.n;
     const tenpai = [];
-    for (let s = 0; s < 4; s++) {
+    for (let s = 0; s < n; s++) {
       const w = waits(this.concealedCounts(s), this.needSets(s), {
         thirteen: this.v.thirteenOrphans, sevenPairs: this.v.sevenPairs, closed: this.melds[s].every((m) => !m.open),
       });
       if (w.length) tenpai.push(s);
     }
-    const deltas = [0, 0, 0, 0];
+    const deltas = new Array(n).fill(0);
     const penalty = this.v.notenPenalty || 0;
-    if (penalty && tenpai.length > 0 && tenpai.length < 4) {
-      const per = penalty / tenpai.length;
-      const cost = penalty / (4 - tenpai.length);
-      for (let s = 0; s < 4; s++) deltas[s] = tenpai.includes(s) ? Math.round(per) : -Math.round(cost);
+    if (penalty && tenpai.length > 0 && tenpai.length < n) {
+      if (this.v.notenPairwise) {
+        // Every noten seat pays every tenpai seat. A fixed pot gets thinner per
+        // player as the table grows, which is backwards: the bigger the table,
+        // the more the game needs a reason not to fold.
+        for (let s = 0; s < n; s++) {
+          deltas[s] = tenpai.includes(s)
+            ? penalty * (n - tenpai.length)
+            : -penalty * tenpai.length;
+        }
+      } else {
+        const per = penalty / tenpai.length;
+        const cost = penalty / (n - tenpai.length);
+        for (let s = 0; s < n; s++) deltas[s] = tenpai.includes(s) ? Math.round(per) : -Math.round(cost);
+      }
     }
-    for (let s = 0; s < 4; s++) this.scores[s] += deltas[s];
+    for (let s = 0; s < n; s++) this.scores[s] += deltas[s];
     this.result = {
       kind: 'draw',
       tenpai,
@@ -585,8 +603,8 @@ export class Game {
     this.result.next = {
       keepDeal,
       roundWind: this.roundWind,
-      dealer: keepDeal ? this.dealer : next(this.dealer),
-      matchOver: !keepDeal && next(this.dealer) === 0 && this.roundWind + 1 >= this.rounds,
+      dealer: keepDeal ? this.dealer : next(this.dealer, this.n),
+      matchOver: !keepDeal && next(this.dealer, this.n) === 0 && this.roundWind + 1 >= this.rounds,
     };
   }
 
@@ -600,8 +618,8 @@ export class Game {
     } else {
       this.honba = draw ? this.honba + 1 : 0;
       this.continuation = 0;
-      const wasLast = this.dealer === 3;
-      this.dealer = next(this.dealer);
+      const wasLast = this.dealer === this.n - 1;
+      this.dealer = next(this.dealer, this.n);
       if (wasLast) {
         this.roundWind++;
         if (this.roundWind >= this.rounds) {
@@ -618,7 +636,7 @@ export class Game {
 
   /** Final standings, built from the per-hand history the match already keeps. */
   summary() {
-    const wins = [0, 0, 0, 0], selfDraws = [0, 0, 0, 0], dealtIn = [0, 0, 0, 0];
+    const wins = new Array(this.n).fill(0), selfDraws = new Array(this.n).fill(0), dealtIn = new Array(this.n).fill(0);
     let draws = 0, best = null;
     for (const h of this.history) {
       const r = h.result;
@@ -635,7 +653,7 @@ export class Game {
         best = { seat: r.seat, label: r.label, value: r.value, handNo: h.handNo };
       }
     }
-    const order = [0, 1, 2, 3].sort((a, b) => this.scores[b] - this.scores[a]);
+    const order = [...this.scores.keys()].sort((a, b) => this.scores[b] - this.scores[a]);
     return {
       hands: this.history.length,
       scores: this.scores.slice(),
@@ -655,6 +673,7 @@ export class Game {
     return {
       variant: this.variantId,
       variantName: this.v.name,
+      seats: this.n,
       handSize: this.v.handSize,
       bonusEvents: this.bonusEvents || [],
       phase: this.phase,
@@ -671,11 +690,11 @@ export class Game {
       bonus: this.bonus,
       discards: this.discards,
       river: this.river,
-      handCounts: this.hands?.map((h) => h.length) ?? [0, 0, 0, 0],
+      handCounts: this.hands?.map((h) => h.length) ?? new Array(this.n).fill(0),
       drawnBy: this.drawn !== null ? this.turn : null,
       lastDiscard: this.lastDiscard,
       doraIndicators: this.doraIndicators ?? [],
-      riichiSeats: this.riichi?.map((r) => !!r) ?? [false, false, false, false],
+      riichiSeats: this.riichi?.map((r) => !!r) ?? new Array(this.n).fill(false),
       claimPending: this.claim
         ? Object.keys(this.claim.options).filter((s) => !this.claim.responses[s]).map(Number)
         : [],
@@ -688,6 +707,8 @@ export class Game {
       setsNeeded: this.v.setsNeeded,
       useSevenPairs: !!this.v.sevenPairs,
       useThirteen: !!this.v.thirteenOrphans,
+      notenPenalty: this.v.notenPenalty || 0,
+      notenPairwise: !!this.v.notenPairwise,
       needsValue: !!this.v.requireYaku || (this.v.scoring?.minFaan ?? 0) > 0,
     };
   }
@@ -698,7 +719,7 @@ export class Game {
     return {
       ...pub,
       seat,
-      seatWind: (seat - this.dealer + 4) % 4,
+      seatWind: (seat - this.dealer + this.n) % this.n,
       hand: sortTiles(this.hands?.[seat] ?? []),
       drawn: this.turn === seat ? this.drawn : null,
       furiten: this.furiten?.[seat] || this.tempFuriten?.[seat] || false,

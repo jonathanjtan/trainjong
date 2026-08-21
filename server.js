@@ -179,6 +179,9 @@ function serve(req, res) {
 
 const DEFAULT_CONFIG = { variantId: 'hk-old', rounds: 4, claimSeconds: 20, bots: false, botLevel: 'normal' };
 
+/** how many seats the chosen rules want — four for everything but 五方 */
+const seatCount = (variantId) => getVariant(variantId).seats || 4;
+
 /* An avatar is either a name the client looks up in its own table of drawings or
    a file sitting in public/faces. Either way it is checked here, so nothing can
    come back out as markup — or as a path — on somebody else's screen. */
@@ -193,7 +196,7 @@ class Room {
   constructor(name) {
     this.name = name;
     this.players = new Map();   // token -> player
-    this.seats = [null, null, null, null];
+    this.seats = new Array(seatCount(DEFAULT_CONFIG.variantId)).fill(null);
     this.config = { ...DEFAULT_CONFIG };
     this.game = null;
     this.claimTimer = null;
@@ -215,7 +218,7 @@ class Room {
     if (avatar) p.avatar = avatarId(avatar);
     p.conns.add(conn);
     // reclaim a seat held by this token
-    for (let s = 0; s < 4; s++) if (this.seats[s] === token) p.seat = s;
+    for (let s = 0; s < this.seats.length; s++) if (this.seats[s] === token) p.seat = s;
     return p;
   }
 
@@ -332,7 +335,7 @@ class Room {
         if (p?.bot) pending.push(+s);
       }
     } else if (g.phase === 'hand-over') {
-      for (let s = 0; s < 4; s++) {
+      for (let s = 0; s < this.seats.length; s++) {
         const p = this.occupant(s);
         if (p?.bot) this.nextReady.add(p.token);
       }
@@ -347,11 +350,26 @@ class Room {
     }, 420 + Math.random() * 260);
   }
 
+  /** the seat row grows or shrinks with the rules; anyone past the end stands up */
+  resize() {
+    const want = seatCount(this.config.variantId);
+    if (this.seats.length === want) return;
+    for (let s = want; s < this.seats.length; s++) {
+      const p = this.occupant(s);
+      if (p) { p.seat = null; p.ready = false; }
+    }
+    const next = new Array(want).fill(null);
+    for (let s = 0; s < Math.min(want, this.seats.length); s++) next[s] = this.seats[s];
+    this.seats = next;
+  }
+
   start() {
+    this.resize();
+    const n = this.seats.length;
     const filled = this.seats.filter(Boolean).length;
-    if (filled < 4 && !this.config.bots) return { error: 'need four players (or turn on bots)' };
+    if (filled < n && !this.config.bots) return { error: `need ${n} players (or turn on bots)` };
     if (this.config.bots) {
-      for (let s = 0; s < 4; s++) {
+      for (let s = 0; s < n; s++) {
         if (this.seats[s]) continue;
         const token = `bot-${s}-${crypto.randomBytes(3).toString('hex')}`;
         this.players.set(token, {
@@ -418,7 +436,7 @@ function onConnection(conn, req) {
         break;
       case 'sit': {
         const s = Number(m.seat);
-        if (!(s >= 0 && s < 4)) return;
+        if (!(s >= 0 && s < r.seats.length)) return;
         const occupantToken = r.seats[s];
         const occupant = occupantToken ? r.players.get(occupantToken) : null;
         if (r.game && r.game.phase !== 'idle') {
@@ -445,7 +463,10 @@ function onConnection(conn, req) {
         if (r.game && r.game.phase !== 'idle' && r.game.phase !== 'match-over') {
           return conn.send({ t: 'error', msg: 'finish the match first' });
         }
-        if (m.variantId && VARIANT_LIST.some((v) => v.id === m.variantId)) r.config.variantId = m.variantId;
+        if (m.variantId && VARIANT_LIST.some((v) => v.id === m.variantId)) {
+          r.config.variantId = m.variantId;
+          r.resize();
+        }
         if (m.rounds) r.config.rounds = Math.min(4, Math.max(1, Number(m.rounds) | 0));
         if (m.claimSeconds !== undefined) r.config.claimSeconds = Math.min(60, Math.max(0, Number(m.claimSeconds) | 0));
         if (m.bots !== undefined) r.config.bots = !!m.bots;
