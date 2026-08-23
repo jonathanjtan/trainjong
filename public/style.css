@@ -181,6 +181,7 @@ body {
 .deltas > div:nth-child(2) { animation-delay: 120ms; }
 .deltas > div:nth-child(3) { animation-delay: 180ms; }
 .deltas > div:nth-child(4) { animation-delay: 240ms; }
+.deltas > div:nth-child(5) { animation-delay: 300ms; }
 
 /* it is your turn: your name plate acknowledges it */
 @keyframes turnGlow {
@@ -422,17 +423,28 @@ button .cjk { font-size: 17px; margin-right: 5px; }
   /* anchor for the landscape floating button clusters */
   position: relative;
 }
+/* The tray floats over the foot of the table rather than pushing it up. In flow
+   it took a quarter of the board's height with it, so the table was refitted and
+   every tile on it shrank at the one moment the table should hold still: while
+   you are reading it to decide. Nothing else in the footer moves either — the
+   hint says "Someone discarded." where it said "Waiting on Bot 2.", and the
+   action row is empty during a claim anyway — so the board's height does not
+   change at all now, and neither does a single tile.
+   What it covers is the near seat's own pond, which is the least of what anyone
+   is reading here; the tile in question is ringed on the table and drawn again
+   in the tray besides. Landscape has floated it for the same reason all along. */
 .tray {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 100%;
+  z-index: 30;
   background: linear-gradient(to top, #0a2b24, #0c3b31);
   border-top: 2px solid var(--brass);
   padding: 8px 12px 9px;
   box-shadow: 0 -12px 30px rgba(0, 0, 0, 0.45);
   animation: rise 160ms ease-out;
 }
-/* the hand stays readable while deciding — just quieter */
-body.claiming .rack { padding-top: 8px; }
-body.claiming .mine .actions { display: none; }
-body.claiming .mine .hint { display: none; }
 @keyframes rise { from { transform: translateY(100%); } to { transform: translateY(0); } }
 .tray .head { display: flex; align-items: center; gap: 12px; }
 .tray .who { font-size: 12px; color: #a9cfc2; }
@@ -1022,6 +1034,14 @@ body.claiming .mine .hint { display: none; }
 .chub .s-left { grid-area: 2 / 1 / 3 / 2; }
 .chub .s-right { grid-area: 2 / 3 / 3 / 4; }
 .chub .s-bottom { grid-area: 3 / 2 / 4 / 3; }
+/* Turned, and it has to be. A readout that runs along the rim needs no width at
+   all, which is the only reason four of them fit a slab this size: stood
+   upright they were measured at 43px of middle left over with a four-digit
+   score, and 17px with a five-digit riichi one, against the 51px the round and
+   hand need. Legibility would be worth a lot here — three of the four scores
+   face away from a phone's one reader — but not the slab it would cost. If it
+   is ever worth revisiting, the room is in the slab's four corners, which are
+   empty on purpose, not on its edges. */
 .chub:not(.poly) .sc > span { transform: rotate(var(--a, 0deg)); }
 
 /* Past four there is no grid to sit in, so the readouts go round the rim. Each
@@ -1134,7 +1154,6 @@ body.claiming .mine .hint { display: none; }
   /* Both button groups float over the table's lower right, anchored to the top
      of the footer, so the hand never gives up width for them. bottom:100% is
      measured from the footer box, which is exactly the top of the hand strip. */
-  body.claiming .rack { padding-top: 0; }
   .mine .actions {
     position: absolute;
     right: 8px;
@@ -1154,8 +1173,18 @@ body.claiming .mine .hint { display: none; }
     font-weight: 700;
     box-shadow: 0 4px 14px rgba(0, 0, 0, 0.55);
   }
+  /* Floating clear of any panel, these sit over the felt and — where the table
+     fills the board — over the corner name plate as well. A button you can see
+     a name through does not read as a button, so the ones that are normally a
+     tint of the surface behind them get a surface of their own. */
+  .mine .actions button:not(.primary):not(.hot),
+  .tray .opts button.ghost {
+    background: rgba(9, 43, 35, 0.96);
+    border-color: rgba(255, 255, 255, 0.22);
+  }
   .tray {
     position: absolute;
+    left: auto;                          /* the upright tray spans the width */
     right: 8px;
     bottom: 100%;
     margin-bottom: 6px;
@@ -1355,9 +1384,12 @@ input[type=text] {
   min-height: 44px;
 }
 /* the face picker in the lobby: the drawings are the labels */
-/* a whole unzipped set can land in here, so the picker scrolls rather than
-   pushing the seat picker off the sheet */
+/* a whole unzipped set can land in here — several hundred faces is normal — so
+   the picker scrolls in a window of its own rather than running down the sheet.
+   Two rows on a phone, where the window is a real share of the screen and
+   everything under it is a scroll away. */
 .avpick { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; max-height: 232px; overflow-y: auto; }
+@media (max-width: 640px) { .avpick { max-height: 128px; } }
 .avpick .av {
   width: 52px;
   height: 52px;
@@ -1434,6 +1466,7 @@ table.pat tr.total td { border-bottom: none; font-weight: 700; padding-top: 8px;
 .standing:nth-child(2) { animation-delay: 150ms; }
 .standing:nth-child(3) { animation-delay: 240ms; }
 .standing:nth-child(4) { animation-delay: 330ms; }
+.standing:nth-child(5) { animation-delay: 420ms; }
 .standing.win { border-color: var(--brass); background: rgba(203, 156, 62, 0.14); }
 .standing.you { box-shadow: inset 0 0 0 1px rgba(203, 156, 62, 0.4); }
 /* every cell placed explicitly — auto-placement flows the spanning cells into
@@ -1464,12 +1497,18 @@ table.pat tr.total td { border-bottom: none; font-weight: 700; padding-top: 8px;
 .standing .total.pos { color: #7fe0b0; }
 .standing .total.neg { color: #f0a29a; }
 
-.deltas { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 12px 0; }
-.deltas div { text-align: center; padding: 8px 4px; border-radius: 8px; background: rgba(255, 255, 255, 0.07); }
-.deltas .d { font-family: var(--num); font-size: 15px; font-weight: 600; }
+/* One card a seat: what the hand cost them, whose it was, where that leaves
+   them. The child combinator matters — as `.deltas div` this also painted the
+   three lines inside each card, so every seat read as three stacked boxes.
+   Columns are counted rather than fixed at four, because 五方 seats five. */
+.deltas { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 6px; margin: 12px 0; }
+.deltas > div { text-align: center; padding: 8px 4px; border-radius: 8px; background: rgba(255, 255, 255, 0.07); }
+.deltas .d { font-family: var(--num); font-size: 17px; font-weight: 600; line-height: 1.2; }
 .deltas .up { color: #7fd6a8; }
 .deltas .down { color: #f0a29a; }
-.deltas .nm { font-size: 10px; opacity: 0.7; }
+.deltas .nm { font-size: 10px; opacity: 0.7; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* the running total, which is a different thing from the change above it */
+.deltas .nm.num { font-size: 12px; opacity: 0.95; margin-top: 2px; color: #cfe3da; }
 
 .log { font-size: 11px; color: #8fb6a8; line-height: 1.5; max-height: 88px; overflow: auto; }
 .joinurl {

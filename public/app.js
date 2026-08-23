@@ -1059,7 +1059,8 @@ function renderTray(g) {
   const el = $('tray');
   const l = g?.legal || {};
   const claimable = g && g.phase === 'claim' && (l.win || l.pung || l.chows?.length || l.kong !== undefined);
-  document.body.classList.toggle('claiming', !!claimable && !TABLE_VIEW);
+  // no body class any more: the tray floats over the table rather than pushing
+  // it up, so nothing else on the page has to get out of its way
   if (!claimable || TABLE_VIEW) {
     el.innerHTML = '';
     if (clockTimer) { clearInterval(clockTimer); clockTimer = null; }
@@ -1234,8 +1235,15 @@ function lobbySheet() {
     <div class="sub">${seatedNames}/4 seated${r.watching > 0 ? ` · ${r.watching} watching` : ''} · everyone opens the same address</div>
     <div class="joinurl">${esc(location.origin)}${ROOM !== 'table' ? `/?room=${esc(ROOM)}` : ''}</div>
 
+    <!-- Name, then seat, then face: the first two are what the table is waiting
+         on and the third is a nicety, and a folder of a few hundred faces put a
+         screenful of scrolling between them. This is the order the README tells
+         people to work in. -->
     <label class="field"><span class="eyebrow">your name</span>
       <input type="text" id="nameinput" value="${esc(you.name || '')}" maxlength="16" placeholder="who are you?"></label>
+
+    <h2>Seat</h2>
+    <div class="seatpick">${seatBtns}</div>
 
     <div class="field"><span class="eyebrow">your face</span>
       <div class="avpick">${AVATARS.map((a) => `<button class="av ${myAvatar === a.id ? 'on' : ''}"
@@ -1244,9 +1252,6 @@ function lobbySheet() {
           data-a="avatar" data-id="file:${esc(f)}" title="${esc(f)}" aria-label="${esc(f)}">
           <img class="av-img" src="${faceSrc(f)}" alt="" loading="lazy"></button>`).join('')}</div>
       ${(r.faces || []).length ? '' : '<span class="hint">drop images (or a folder of them) in public/faces to add your own</span>'}</div>
-
-    <h2>Seat</h2>
-    <div class="seatpick">${seatBtns}</div>
 
     <h2>Ruleset</h2>
     <div class="variants">${variants}</div>
