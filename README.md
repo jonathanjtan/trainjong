@@ -42,6 +42,20 @@ this point works fully offline.
 
 Port taken? `node server.js 9000` or `PORT=9000 node server.js`.
 
+Two more knobs, both only interesting if you put this somewhere other than a
+travel router:
+
+- `HOST` — which interface to listen on. The default is every one of them,
+  which is the whole point on a LAN: you run it on the laptop and the phones
+  find it on the wi-fi. Behind a reverse proxy set `HOST=127.0.0.1`, so the app
+  cannot be reached around the proxy and past whatever the proxy is there to ask
+  for.
+- `ROOM_TTL_MS` — how long a table with nobody connected to it is kept before it
+  is cleared away. Six hours by default. A table that has been empty that long
+  is not one anybody is coming back to, and a sleeping phone is seconds from
+  reconnecting, not hours — but on a box that stays up for months, every room
+  name anyone ever typed would otherwise sit in memory for ever.
+
 ## Things worth knowing
 
 - **Phones sleeping is fine.** Your seat is held by a token in the browser;

@@ -17,6 +17,11 @@ import { TW_TABLE } from './src/score/taiwan.js';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC = path.join(HERE, 'public');
 const PORT = Number(process.env.PORT || process.argv[2] || 8080);
+/* Every interface by default, which is the whole point on a travel router: you
+   run it on the laptop and four phones find it on the wi-fi. A deployment that
+   sits behind a reverse proxy sets HOST=127.0.0.1 so the app cannot be reached
+   around the proxy — and past whatever the proxy is there to ask for. */
+const HOST = process.env.HOST || '0.0.0.0';
 const DEV = !!process.env.DEV;
 
 // ------------------------------------------------------------------ static files
@@ -204,9 +209,24 @@ class Room {
     this.claimRef = null;
     this.botTimer = null;
     this.nextReady = new Set();
+    this.emptySince = null;     // set by the sweeper, see below
   }
 
   player(token) { return this.players.get(token); }
+
+  /** is anyone actually attached? a bot holds a seat but never a socket */
+  live() {
+    for (const p of this.players.values()) if (p.conns.size) return true;
+    return false;
+  }
+
+  /** stop the clocks before the table is cleared away */
+  dispose() {
+    clearTimeout(this.claimTimer);
+    clearTimeout(this.botTimer);
+    this.claimTimer = null;
+    this.botTimer = null;
+  }
 
   join(conn, token, name, avatar) {
     let p = this.players.get(token);
@@ -398,6 +418,31 @@ function room(name) {
   return rooms.get(key);
 }
 
+/* Any name anybody types makes a table, and until now none were ever cleared
+   away: for one evening on a laptop that costs nothing, but on a box that stays
+   up for months every room anyone ever visited sits in memory with its game
+   still in it. So a table nobody is connected to is let go of once it has been
+   that way for ROOM_TTL.
+   Connections rather than activity, because bots left playing on to an empty
+   room would otherwise keep it alive for ever. And hours rather than minutes,
+   because the one promise this must not break is that a phone can go to sleep:
+   that phone's socket dies and its owner reconnects when they wake it, which is
+   seconds or minutes later, never six hours. */
+const ROOM_TTL = Number(process.env.ROOM_TTL_MS || 6 * 60 * 60 * 1000);
+const ROOM_SWEEP = Math.min(5 * 60 * 1000, ROOM_TTL);
+
+function sweepRooms(now = Date.now()) {
+  for (const [key, r] of rooms) {
+    if (r.live()) { r.emptySince = null; continue; }
+    if (r.emptySince === null) { r.emptySince = now; continue; }
+    if (now - r.emptySince < ROOM_TTL) continue;
+    r.dispose();
+    rooms.delete(key);
+    console.log(`  cleared away the empty table “${key}”`);
+  }
+}
+setInterval(() => sweepRooms(), ROOM_SWEEP);
+
 // ---------------------------------------------------------------------- protocol
 
 const conns = new Set();
@@ -534,17 +579,23 @@ server.on('upgrade', (req, socket, head) => {
 heartbeat(conns);
 server.keepAliveTimeout = 65000;
 
-server.listen(PORT, '0.0.0.0', () => {
+server.listen(PORT, HOST, () => {
+  // bound to loopback there is no address to give anybody, and printing the
+  // wi-fi ones would be an invitation to four phones that cannot take it up
+  const lan = HOST === '0.0.0.0' || HOST === '::';
   const addrs = [];
-  for (const [name, list] of Object.entries(os.networkInterfaces())) {
-    for (const i of list || []) {
-      if (i.family === 'IPv4' && !i.internal) addrs.push({ name, addr: i.address });
+  if (lan) {
+    for (const [name, list] of Object.entries(os.networkInterfaces())) {
+      for (const i of list || []) {
+        if (i.family === 'IPv4' && !i.internal) addrs.push({ name, addr: i.address });
+      }
     }
   }
   const line = '─'.repeat(46);
   console.log(`\n  麻雀  Mahjong table is up\n${line}`);
   console.log(`  This machine   http://localhost:${PORT}`);
   for (const a of addrs) console.log(`  ${a.name.padEnd(13)}  http://${a.addr}:${PORT}`);
+  if (!lan) console.log(`  Bound to ${HOST} — reachable through whatever is in front of it.`);
   console.log(`${line}`);
   console.log('  Everyone joins the same URL, picks a seat, hits Ready.');
   console.log('  Prop this laptop up and open /?view=table for a table view.');
