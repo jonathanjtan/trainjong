@@ -152,6 +152,26 @@ test('four seats: still the square, down to the grid cells', () => {
     ['-bottom', '-right', '-top', '-left'], 'the hub keeps its named grid cells');
 });
 
+/* The rectangle: the near and far seats keep .band's own numbers, the two side
+   seats are handed the other pond's inline, and a polygon — whose sides all have
+   to match — is handed nothing at all. That split is the whole of what lets the
+   table take the shape of the screen, so it is worth saying out loud. */
+test('four seats: only the two side bands run along the other axis', () => {
+  const html = draw('hk-new', 4);
+  const bands = html.split('class="band"').slice(1).map((b) => b.slice(0, 260));
+  assert.strictEqual(bands.length, 4);
+  assert.deepStrictEqual(bands.map((b) => b.includes('--len:var(--SH)')),
+    [false, true, false, true], 'the near and far seats keep the default band');
+  assert.ok(bands[1].includes('--ring:var(--sring)'), 'a side band draws the side pond');
+  assert.ok(bands[1].includes('--apo:calc(var(--SW) / 2)'), 'and reaches half the width to the middle');
+});
+
+test('five seats: every band takes the polygon\'s one side', () => {
+  const html = draw('hk-new-5', 5);
+  assert.ok(!/--len:/.test(html), 'a regular polygon has no second shape to hand out');
+  assert.ok(!/--sring/.test(html));
+});
+
 test('four seats: the arena plates carry no score of their own', () => {
   // regression: the seat count was being passed into plate()'s withScore slot,
   // which put a score on every plate and reset the outward vectors to a square

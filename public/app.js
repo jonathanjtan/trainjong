@@ -334,8 +334,8 @@ function renderRail(g) {
   // layout is the other way round: its hub owns the commentary, and the round
   // and wall were moved out here precisely to stop the hub crowding the ponds.
   $('rail').innerHTML = `
-    <span class="round cjk">${WINDS[g.roundWind]}</span>
-    ${simpleLayout ? `<span class="eyebrow">${WIND_EN[g.roundWind]} · hand ${g.handNo}</span>
+    <span class="round cjk">${WINDS[g.roundWind]}${simpleLayout ? `<i class="num">${g.handNo}</i>` : ''}</span>
+    ${simpleLayout ? `<span class="eyebrow en">${WIND_EN[g.roundWind]} · hand ${g.handNo}</span>
       <span class="wallcount"><b>${g.wall}</b> left</span>` : ''}
     ${!simpleLayout && g.doraIndicators?.length
       ? `<span class="raildora">${g.doraIndicators.map((t) => tileEl(t)).join('')}</span>` : ''}
@@ -451,13 +451,15 @@ function fband(g, seat, dir) {
    The plate is the one exception — it rides along in the corner but counter-
    rotates its text, because an upside-down name is just unreadable. */
 
-/* Six to a row, three rows — the reference's ratio, and the shape that buys the
-   most tile for the space (shorter rows need more of them, which pushes the
-   ponds inward and costs more than it saves). The stylesheet is told this
-   number rather than repeating it: when the two drifted apart, the predictor
-   below reserved three rows for a pond that wrapped to four and the last row
-   spilled into the wall strip. */
+/* Six to a row by three rows is the reference's way of laying out a pond, and
+   the eighteen tiles that makes is about what a hand wants. Neither number is
+   fixed any more: fitArena() picks the row length that suits the screen, and
+   POND_MIN is only how much pond to keep reserved whatever that length turns out
+   to be — so the table is not built for three discards and rebuilt for every one
+   after. Six survives as the row length a regular polygon uses, since a shape
+   whose sides all have to match has no choice to make. */
 const POND_COLS = 6;
+const POND_MIN = 18;
 const DIRS = ['bottom', 'right', 'top', 'left'];
 
 /* The square table is one case of a regular N-gon, and writing it that way is
@@ -504,24 +506,47 @@ function outward(k, n) {
   return { sx: -Math.sin(r), sy: Math.cos(r) };
 }
 
-/* The pond has a fixed height so the four bands stay the same size, which means
-   we have to know up front how many rows the longest one wants. Mirrors what
-   flex wrap will do: fill greedily, and count a sideways riichi tile as wider. */
-function pondRows(river, seat) {
+/* The pond has a fixed height so that opposite bands stay the same size, which
+   means we have to know up front how many rows the longest one wants. Mirrors
+   what flex wrap will do: fill greedily, and count a sideways riichi tile as
+   wider. */
+function pondRows(river, seat, cols) {
   let rows = 1, used = 0;
   for (const d of river) {
     if (d.seat !== seat) continue;
     const w = d.riichi ? 1.4 : 1;
-    if (used + w > POND_COLS + 0.01) { rows++; used = w; } else used += w;
+    if (used + w > cols + 0.01) { rows++; used = w; } else used += w;
   }
   return rows;
 }
 
+/* Rows to reserve for a group of seats at a given row length: enough for the
+   longest pond among them, and never less than a pond's worth, so the table is
+   not built for three discards and then rebuilt for every one after. */
+function rowsFor(river, seats, cols) {
+  return Math.max(Math.ceil(POND_MIN / cols), ...seats.map((s) => pondRows(river, s, cols)));
+}
+
+/* How many rows each half of the table needs, for whatever row lengths the fit
+   is considering. Only the renderer knows this hand's discards and only the fit
+   knows the screen, so the renderer leaves the question answerable and the fit
+   asks it. The fallback is the square, for a fit that runs before any render. */
+let pondShapeFor = () => ({ nrows: 3, srows: 3 });
+
 function arenaTable(g, order) {
   const n = order.length;
   const p = polygon(n);
-  const prows = Math.max(3, ...order.map((s) => pondRows(g.river, s)));
-  const vars = `--prows:${prows};--cols:${POND_COLS};--N:${n};`
+  // Four seats have two pond shapes to choose between — one for the seats across
+  // from each other at the near and far edges, one for the two at the sides —
+  // and the fit picks the pair that fills the screen. A polygon's sides all have
+  // to match, so every seat answers to the same one.
+  const near = n === 4 ? [order[0], order[2]] : order;
+  const side = n === 4 ? [order[1], order[3]] : order;
+  pondShapeFor = (cols, scols) => ({
+    nrows: rowsFor(g.river, near, cols),
+    srows: rowsFor(g.river, side, scols),
+  });
+  const vars = `--N:${n};`
     + `--apof:${p.apof.toFixed(5)};--boxf:${p.boxf.toFixed(5)}`;
   // The square keeps the hand-tuned plate corners it already had; anything else
   // hangs its names off the rim at the angle of its own seat.
@@ -607,12 +632,22 @@ function seatParts(g, seat) {
   return { pond, melds };
 }
 
+/* The two side seats of a four-seat table run along the other axis: their band
+   is as long as the table is tall, as deep as their own pond, and its outer edge
+   is half the table's width from the middle. Handed over inline rather than as a
+   class, because that is the whole of the difference — every other line of .band
+   is written once and serves all four. Past four seats the polygon is regular
+   and none of this is written at all. */
+const CROSS_BAND = '--len:var(--SH);--blk:var(--sblk);--apo:calc(var(--SW) / 2);'
+  + '--ring:var(--sring);--pondh:calc(var(--srows) * (var(--dh) + var(--gap)));';
+
 function band(g, seat, k, n) {
   const { pond, melds } = seatParts(g, seat);
   // the arena has the edge to spare, so it draws the concealed tiles one by one
   const wall = showsWall(g, seat)
     ? `<div class="backs">${Array.from({ length: g.handCounts[seat] }, () => tileEl(0, { back: true })).join('')}</div>` : '';
-  return `<div class="band" style="--rot:${seatRot(k, n)}deg">
+  const cross = n === 4 && k % 2 ? CROSS_BAND : '';
+  return `<div class="band" style="--rot:${seatRot(k, n)}deg;${cross}">
     <div class="pond">${pond}</div>
     <div class="bandedge">
       <div class="bcontent">${wall}${melds ? `<div class="bmelds">${melds}</div>` : ''}</div>
@@ -655,30 +690,58 @@ function fitTable() {
   return fitFlatTable();
 }
 
-/* The arena is a square whose side is a straight line in --dw: some multiple of
-   the tile size plus a fixed number of pixels of gap. Rather than restate that
-   sum here — where it would rot the moment the CSS changes — set two probe
-   sizes, measure what comes out, and solve the line. The result only depends on
-   how many rows the ponds asked for, so it caches per row count. Probing is
-   done flat: the layout square is what this line describes, and the tilt is
-   applied to it afterwards. */
+/* Both of the arena's sides are straight lines in --dw: some multiple of the
+   tile size plus a fixed number of pixels of gap. Rather than restate those sums
+   here — where they would rot the moment the CSS changes — set two probe sizes,
+   measure what comes out, and solve both lines. The answer depends only on the
+   pond shape, so it caches per shape. Probing is done flat: the lines describe
+   the layout box, and the tilt is applied to it afterwards. */
 const arenaCal = new Map();
 
-function arenaCalibrate(arena, prows) {
-  const hit = arenaCal.get(prows);
+function setArenaShape(arena, { cols, scols, nrows, srows }) {
+  arena.style.setProperty('--cols', cols);
+  arena.style.setProperty('--scols', scols);
+  arena.style.setProperty('--nrows', nrows);
+  arena.style.setProperty('--srows', srows);
+}
+
+function arenaCalibrate(arena, key) {
+  const hit = arenaCal.get(key);
   if (hit) return hit;
   const tilt = arena.style.getPropertyValue('--tilt');
   arena.style.setProperty('--tilt', '0deg');
   arena.style.setProperty('--dw', '12px');
-  const lo = arena.getBoundingClientRect().width;
+  const lo = arena.getBoundingClientRect();
   arena.style.setProperty('--dw', '32px');
-  const hi = arena.getBoundingClientRect().width;
+  const hi = arena.getBoundingClientRect();
   arena.style.setProperty('--tilt', tilt);
-  const k = (hi - lo) / 20;
-  if (!(k > 0)) return null;
-  const cal = { k, c: lo - 12 * k };
-  arenaCal.set(prows, cal);
+  const kw = (hi.width - lo.width) / 20, kh = (hi.height - lo.height) / 20;
+  if (!(kw > 0) || !(kh > 0)) return null;
+  const cal = { kw, cw: lo.width - 12 * kw, kh, ch: lo.height - 12 * kh };
+  arenaCal.set(key, cal);
   return cal;
+}
+
+/* Tilted, the table projects to a fixed multiple of its layout box in each axis
+   — fixed because the vanishing distance is written off the table's own depth,
+   so the same angle answers for any tile size and any shape. One measurement
+   therefore gives the pair for good, and the fit can go on solving in layout
+   pixels and simply spend a smaller budget. */
+const arenaProj = new Map();
+
+function arenaProject(arena, tilt, cand) {
+  if (!tilt) return { fw: 1, fh: 1 };
+  const key = tilt.toFixed(1);
+  const hit = arenaProj.get(key);
+  if (hit) return hit;
+  setArenaShape(arena, cand);
+  const dw = 24;
+  arena.style.setProperty('--dw', `${dw}px`);
+  const box = arena.getBoundingClientRect();
+  const p = { fw: box.width / (cand.cal.kw * dw + cand.cal.cw), fh: box.height / (cand.cal.kh * dw + cand.cal.ch) };
+  if (!(p.fw > 0) || !(p.fh > 0)) return { fw: 1, fh: 1 };
+  arenaProj.set(key, p);
+  return p;
 }
 
 /* Lay the table back only where there is surplus width to pay for it, and ramp
@@ -693,6 +756,32 @@ function arenaTilt(availW, availH) {
   return t < TILT_MIN ? 0 : t;
 }
 
+/* The row lengths worth trying. A pond of POND_MIN tiles laid c to a row is
+   ceil(POND_MIN / c) rows deep, and it is that depth — not the length — that the
+   other pair of seats has to reach across. So the lengths that earn their place
+   are the shortest one for each depth, 4/5/6/9, plus a longer one for a board
+   with width to burn late in a hand, when the ponds have outgrown their floor.
+
+   Every pairing of them is tried, because the near and far seats' length is what
+   sets the table's width and the side seats' is what sets its height, and which
+   pairing wins is exactly the question of what shape the screen is. Hand-picking
+   the pairings instead looked reasonable and quietly cost a fifth of the tile:
+   an upright phone wants six across the near edge and nine up the sides, and a
+   landscape one the other way about — neither of which is on any line you would
+   think to draw through the square. */
+const ARENA_COLS = [4, 5, 6, 9, 12];
+const ARENA_SHAPES = ARENA_COLS.flatMap((cols) => ARENA_COLS.map((scols) => [cols, scols]));
+
+/* The shape in front of the players, and how much better a rival has to be to
+   take the table off it. Re-laying four ponds is a far bigger event than a few
+   percent of tile size, and the board's height twitches by a button's worth
+   every time a kong or a win comes on offer — enough, unheld, to swap the table
+   back and forth mid-hand. So a rival has to win outright by a margin, and the
+   incumbent is forgotten only when the viewport itself changes, where the fit
+   should start over with no opinion. */
+const SHAPE_HOLD = 1.05;
+let arenaShape = null;
+
 function fitArena() {
   const board = $('board');
   const arena = board?.querySelector('.arena');
@@ -706,32 +795,39 @@ function fitArena() {
   arena.style.setProperty('--tilt', `${tilt.toFixed(1)}deg`);
   arena.style.setProperty('--shift', '0px');
 
-  const cal = arenaCalibrate(arena, arena.style.getPropertyValue('--prows') || '3');
-  if (!cal) { arena.style.setProperty('--dw', '16px'); return; }
+  // A polygon's sides all have to match, so there is no shape to choose: every
+  // seat takes the row length the square uses.
+  const shapes = arena.classList.contains('poly') ? [[POND_COLS, POND_COLS]] : ARENA_SHAPES;
+  const cands = [];
+  for (const [cols, scols] of shapes) {
+    const { nrows, srows } = pondShapeFor(cols, scols);
+    const cand = { cols, scols, nrows, srows };
+    setArenaShape(arena, cand);
+    cand.cal = arenaCalibrate(arena, `${cols}:${scols}:${nrows}:${srows}`);
+    if (cand.cal) cands.push(cand);
+  }
+  if (!cands.length) { arena.style.setProperty('--dw', '16px'); return; }
 
-  const setSide = (side) => {
-    const dw = Math.max(MIN_DW, Math.min(MAX_DW, (side - cal.c) / cal.k));
-    arena.style.setProperty('--dw', `${dw.toFixed(2)}px`);
-    return arena.getBoundingClientRect();
-  };
+  const proj = arenaProject(arena, tilt, cands[cands.length - 1]);
+  const budgetW = availW / proj.fw, budgetH = availH / proj.fh;
+  let best = null;
+  for (const c of cands) {
+    c.dw = Math.min((budgetW - c.cal.cw) / c.cal.kw, (budgetH - c.cal.ch) / c.cal.kh);
+    const held = arenaShape && c.cols === arenaShape[0] && c.scols === arenaShape[1] ? SHAPE_HOLD : 1;
+    if (!best || c.dw * held > best.score) best = Object.assign({ score: c.dw * held }, c);
+  }
+  arenaShape = [best.cols, best.scols];
+  setArenaShape(arena, best);
+  arena.style.setProperty('--dw', `${Math.max(MIN_DW, Math.min(MAX_DW, best.dw)).toFixed(2)}px`);
 
-  let box = setSide(Math.min(availW, availH));
+  let box = arena.getBoundingClientRect();
   if (tilt) {
-    // Tilted, the square projects to a fixed multiple of itself in each axis —
-    // fixed because the vanishing distance scales with the table. So one
-    // measurement gives the ratio and the fit lands in a single correction; the
-    // second pass is only there to absorb the px rounding in the tile size.
-    for (let i = 0; i < 2; i++) {
-      const side = arena.offsetWidth;
-      const room = Math.min(availW / box.width, availH / box.height);
-      if (room > 0.997 && room < 1.006) break;
-      box = setSide(side * room);
-    }
     // the projection is not centred on the layout box — the near edge reaches
     // further down than the far edge reaches up — so put it back in the middle
     const br = board.getBoundingClientRect();
     const want = br.top + (parseFloat(cs.paddingTop) || 0) + availH / 2;
     arena.style.setProperty('--shift', `${(want - (box.top + box.height / 2)).toFixed(1)}px`);
+    box = arena.getBoundingClientRect();
   }
   placePlates(board, box, availW, availH);
 }
@@ -745,8 +841,20 @@ function placePlates(board, box, availW, availH) {
   if (!plates) return;
   plates.style.setProperty('--tblw', `${Math.round(box.width)}px`);
   plates.style.setProperty('--tblh', `${Math.round(box.height)}px`);
-  plates.classList.toggle('vroom', (availH - box.height) / 2 >= 46);
-  plates.classList.toggle('hroom', (availW - box.width) / 2 >= 190);
+  // How big a plate is decides both questions below, and it is not a number
+  // worth guessing: guessed wide, the far seat's name was clamped a plate's
+  // width in from the corner it was aiming for and landed in the middle of the
+  // near edge, on top of the wall. A plate is as wide as its owner's name.
+  let pw = 0, ph = 0;
+  for (const p of plates.children) {
+    pw = Math.max(pw, p.offsetWidth); ph = Math.max(ph, p.offsetHeight);
+  }
+  if (pw && ph) {
+    plates.style.setProperty('--pw', `${Math.ceil(pw)}px`);
+    plates.style.setProperty('--ph', `${Math.ceil(ph)}px`);
+  }
+  plates.classList.toggle('vroom', (availH - box.height) / 2 >= ph + 4);
+  plates.classList.toggle('hroom', (availW - box.width) / 2 >= pw + 6);
 }
 
 /* Three numbers make a table: discards to a row for the near seats, the same
@@ -761,7 +869,7 @@ function placePlates(board, box, availW, availH) {
    A candidate that cannot beat the champion at the champion's own size is
    dropped after a single measurement, so the search costs about one bisection
    rather than ten. */
-const POND_SHAPES = [[6, 5], [8, 6], [10, 6], [6, 4], [5, 3]]
+const POND_SHAPES = [[6, 5], [8, 6], [10, 6], [12, 6], [6, 4], [5, 3], [4, 3], [5, 2], [4, 2]]
   .flatMap(([cols, scols]) => [[cols, scols, 0], [cols, scols, 1]]);
 let flatShape = POND_SHAPES[0];              // last winner, tried first and kept on ties
 
@@ -823,8 +931,11 @@ for (const ev of ['resize', 'orientationchange']) {
     if (fitPending) return;
     fitPending = true;
     // a rotation can cross a media query, which may move the numbers the arena
-    // calibration was solved from
+    // calibration was solved from — and a new viewport deserves a fresh answer
+    // about the table's shape rather than the last one's, held
     arenaCal.clear();
+    arenaProj.clear();
+    arenaShape = null;
     requestAnimationFrame(() => { fitPending = false; fitTable(); });
   });
 }

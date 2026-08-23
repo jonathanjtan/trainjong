@@ -76,7 +76,8 @@ Port taken? `node server.js 9000` or `PORT=9000 node server.js`.
 - **The table is drawn as a table.** Discards pool in the middle in four blocks,
   and every tile a player owns — their discards, their concealed wall, their
   melds — is turned to face that player, the way it sits on a real table (and
-  the way Mahjong Soul and friends draw it). Six discards to a row, three rows.
+  the way Mahjong Soul and friends draw it). How many discards to a row is not
+  fixed: see **it takes the shape of the screen**, below.
   The slab in the middle carries the round, the wall count and the four scores,
   each score turned towards its own seat, with the seat to play lit; it floats
   inside the ring the ponds make rather than filling it, so the middle stays out
@@ -85,18 +86,32 @@ Port taken? `node server.js 9000` or `PORT=9000 node server.js`.
   head of the strip its own seat owns, beside that player's melds; the arena,
   which cannot carry an upright name on a table that lies back, hangs it off the
   middle of each edge wherever the felt has room and keeps to the corner where
-  it does not. Twelve faces come drawn in — inline SVG, like the tiles, so there
-  is nothing to download — and you pick one in the lobby beside your name.
+  it does not. On a phone the table is fitted to fill the board, so there is
+  usually no room and the names float over the corners — which is where each
+  band's wall and melds are not, since those sit centred on their own edge.
+  Twelve faces come drawn in — inline SVG, like the tiles, so there is nothing
+  to download — and you pick one in the lobby beside your name.
 - **Faces of your own**: drop images in `public/faces` and they join the picker,
   cropped to the same circle. The list is read off the disk, so a new file shows
   up within a couple of seconds. That directory is gitignored — what you put on
   your own table stays on your own table.
-- **It lies back in landscape**, again like the reference. That is not just
-  decoration: a flat square table can only ever be as big as the short edge of
-  the screen, and landscape has width going spare. Tilting it trades that
-  surplus width for about a third more tile, and the near half — which is yours
-  — gains the most. The angle comes from how much surplus width there actually
-  is, so portrait, which has none, stays flat and top-down.
+- **It takes the shape of the screen.** A real table is square, but a phone is
+  not, and a square can only ever be as big as the screen's short edge — which
+  on an upright phone threw away a third of the felt's height and in landscape
+  two fifths of its width. So the two seats at the near and far edges and the
+  two at the sides get their own pond shape — so many discards to a row, so many
+  rows — and the fit tries every pairing of the lengths worth trying and keeps
+  whichever affords the biggest tile. An upright phone ends up six across the
+  near edge and nine up the sides, a landscape one the other way about, and each
+  gains a good fifth of its tile size by it; a tablet, with room to spare either
+  way, gets four equal ponds, which is the square this always drew. Re-laying the
+  ponds is a bigger event than a few percent of tile, so the shape in front of
+  the players is held until something clearly beats it.
+- **It lies back in landscape**, again like the reference, and that is not just
+  decoration either: laying the table back trades height — which landscape has
+  none of — for size, and the near half, which is yours, gains the most. The
+  angle comes from how much surplus width there actually is, so portrait, which
+  has none, stays flat and top-down.
 - **`simple` in the top bar** draws the same table without the rotation: each
   seat's melds along their own edge, their discards pooled around the middle,
   every tile facing the reader. An opponent's concealed hand is one face-down
@@ -110,9 +125,7 @@ Port taken? `node server.js 9000` or `PORT=9000 node server.js`.
   afford turns on how many rows the ponds have wrapped to. A landscape phone
   gains a fifth of its tile size taking the first; an upright one loses half.
 - **Landscape works**, and so does a zoomed-in laptop: the layout is sized from
-  the viewport, so the table and your hand always fit without scrolling. The
-  table is square and sized to the shorter edge, so on a wide screen it sits
-  centred with felt either side.
+  the viewport, so the table and your hand always fit without scrolling.
 - **`?view=table` is full screen** — the `full` button in the top bar goes
   properly fullscreen if the browser allows it.
 - **How to play**: the `?` button in the top bar opens a guide — the basics,

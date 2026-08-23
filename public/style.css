@@ -211,7 +211,20 @@ body {
   color: var(--brass);
   line-height: 1;
 }
+/* the flat layout has no slab in the middle to carry the hand number, so the
+   round glyph carries it — three characters that always fit, where the English
+   spelling of the same thing is the first casualty of a narrow phone */
+.rail .round i { font-family: var(--num); font-style: normal; font-size: 15px; font-weight: 600; margin-left: 2px; }
 .rail .round, .rail .wallcount { flex: 0 0 auto; }
+/* Whatever the rail is carrying, it is one line: on a narrow phone the flat
+   layout's "EAST · HAND 2" wrapped to three of them and took a fifth of the
+   table's height with it. Shrink and trail off instead, the way the arena's
+   running commentary beside it already does. */
+.rail > .eyebrow { flex: 0 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* On a phone the rail is over budget before this even gets a look in, and
+   "EAS…" is worth less than the space it takes: the glyph beside it says the
+   same thing, and now carries the hand number too. */
+@media (max-width: 460px) { .rail > .eyebrow.en { display: none; } }
 /* the buttons are the one thing that must never be squeezed or wrapped */
 .rail .meta { display: flex; gap: 12px; margin-left: auto; align-items: baseline; flex: 0 0 auto; }
 .rail .meta b { font-family: var(--num); font-size: 14px; font-weight: 600; }
@@ -552,7 +565,11 @@ body.claiming .mine .hint { display: none; }
   place-items: center;
 }
 .pond .tile.turned .tile-svg { width: var(--dw, 20px); transform: rotate(90deg); }
-.pond .tile.dim { opacity: 0.34; }
+/* A claimed tile has left the river, but which tile it was is still worth
+   reading — it is part of the record of who fed whom. Faded far enough to be
+   plainly out of play, not so far that it is a grey smudge at a phone's tile
+   size (it is greyed and darkened by .tile.dim as well as faded here). */
+.pond .tile.dim { opacity: 0.5; }
 .pond .tile.ring { outline: 2px solid var(--brass); outline-offset: 1px; border-radius: 3px; }
 
 .flat .pond { gap: var(--gap); justify-content: flex-start; }
@@ -610,62 +627,81 @@ body.claiming .mine .hint { display: none; }
 
 /* ----------------------------------------------------------------- arena */
 
-/* A real table is square and has no top or bottom, so this one is too: one band
-   — pond, concealed wall, melds, plate — written for the bottom player and
-   rotated 0/90/180/270° about the middle for the other three. Every side is
-   therefore the same side, which is what keeps the four in agreement no matter
-   what the tile size works out to.
-   Every length below is a multiple of --dw plus a fixed pixel count, so --S is
-   a straight line in --dw and fitArena() can solve it by measuring two probes.
-   Keep it that way: a clamp() or a min() anywhere in the --S chain would break
-   the solve and the table would stop fitting its box. */
+/* A real table is square, but a phone is not, and a square can only ever be as
+   big as the screen's short edge — which on an upright phone threw away a third
+   of the felt's height, and in landscape two fifths of its width. So the table
+   is a rectangle whose two pond shapes are chosen to match the screen: the near
+   and far seats get --cols discards to a row and --nrows rows, the two side
+   seats --scols and --srows, and the box those four ponds ring is what the
+   table measures. Four equal ponds give back the square exactly.
+
+   One band — pond, concealed wall, melds — is written once for the bottom
+   player and spun about the middle for the others, so opposite seats are always
+   the same side and the four cannot drift out of agreement.
+
+   Every length below is a multiple of --dw plus a fixed pixel count, so both
+   --SW and --SH are straight lines in --dw and fitArena() can solve them by
+   measuring two probes. Keep it that way: a clamp() or a min() anywhere in
+   either chain would break the solve and the table would stop fitting its box.
+   (--hubw is not in either chain — the slab is positioned absolutely — which is
+   why it is allowed the min() it wants.) */
 .arena {
   --dw: 16px;                                  /* one discarded tile, wide */
   --dh: calc(var(--dw) * 1.4);
   --gap: 1px;
-  --prows: 3;                                  /* pond rows, set by the renderer */
-  /* Discards to a row. The renderer sets this inline from POND_COLS, which is
-     also what predicts how many rows to reserve — the two must never disagree.
-     This is only the fallback for a table drawn before that lands. */
-  --cols: 6;
-  --ring: calc(var(--cols) * (var(--dw) + var(--gap)));
-  --pondh: calc(var(--prows) * (var(--dh) + var(--gap)));
+  /* The two pond shapes, set by the fit. The renderer works out how many rows a
+     given row length needs for this hand's discards; the fit picks the pair that
+     buys the biggest tile. These are only the fallback for a table drawn before
+     that lands — and they are the square, so a table that never gets fitted is
+     the one this used to draw. */
+  --cols: 6;                                   /* discards to a row, near + far */
+  --nrows: 3;
+  --scols: 6;                                  /* ... and the two side seats */
+  --srows: 3;
   --bedge: calc(var(--dw) * 1.18);             /* wall + melds strip */
-  --blk: calc(var(--pondh) + var(--bedge) + 4px);
-  /* One side of the table, and the two numbers that turn a side into a polygon:
-     how far the centre sits from a side, and how big a box the whole shape
-     needs. The renderer sets both; the defaults below are the square, where the
-     apothem is half the side and the box is the side. Both are plain
-     multipliers, which is what keeps --S a straight line in --dw for the fit. */
+  --nring: calc(var(--cols) * (var(--dw) + var(--gap)));
+  --sring: calc(var(--scols) * (var(--dw) + var(--gap)));
+  --nblk: calc(var(--nrows) * (var(--dh) + var(--gap)) + var(--bedge) + 4px);
+  --sblk: calc(var(--srows) * (var(--dh) + var(--gap)) + var(--bedge) + 4px);
+  /* The box: the near pond's width with a side band either side of it, and the
+     side pond's width with a near band above and below. The two side bands are
+     what a near band has to reach across, and vice versa — which is the whole of
+     the geometry. */
+  --SW: calc(var(--nring) + 2 * var(--sblk));
+  --SH: calc(var(--sring) + 2 * var(--nblk));
+  /* Past four seats the shape is a regular N-gon instead, and the two numbers
+     that turn one side into one are how far the centre sits from a side — the
+     apothem — and how big a box the whole shape needs. Both are plain
+     multipliers on the side, which is what keeps the box a straight line in --dw
+     for the fit. At four seats the polygon is the square and neither is used. */
   --apof: 0.5;
   --boxf: 1;
-  --side: calc(var(--ring) + 2 * var(--blk));
+  --side: calc(var(--nring) + 2 * var(--nblk));
   --apo: calc(var(--side) * var(--apof));
-  --S: calc(var(--side) * var(--boxf));
   /* the slab is drawn inside the hole the four ponds ring rather than filling
      it. The hole is one pond row across and cannot be made smaller — shorter
      rows need more of them, which pushes the ponds inward and costs more than
      it saves — so the way to a compact middle is to leave felt around it. */
-  --hubw: calc(var(--ring) * 0.74);
+  --hubw: calc(min(var(--nring), var(--sring)) * 0.74);
 
   /* Tilted away from the viewer, the way both reference games draw the table.
-     This is not decoration: landscape has width to spare and no height, and a
-     flat square can only ever be as big as the short edge. Laying it back trades
-     the surplus width for a bigger table — about a third more tile — and the
-     near half, which is your own, gains most. fitArena() sets the angle from how
-     much surplus width there actually is, and leaves it at 0 in portrait.
+     This is not decoration: landscape has width to spare and no height, and
+     laying the table back trades the surplus for a bigger tile — the near half,
+     which is your own, gains most. fitArena() sets the angle from how much
+     surplus width there actually is, and leaves it at 0 in portrait.
 
-     The vanishing distance is a multiple of the table rather than a fixed px, so
-     the perspective looks the same on a phone as on a laptop — and, handily,
-     that makes the projection a pure scale of --S, so the fit stays solvable. */
+     The vanishing distance is a multiple of the table's depth rather than a
+     fixed px, so the perspective looks the same on a phone as on a laptop — and,
+     handily, that makes the projection a pure scale in each axis, so the fit
+     stays solvable. */
   --tilt: 0deg;
-  --persp: calc(var(--S) * 2);
+  --persp: calc(var(--SH) * 2);
   --shift: 0px;
   transform: translateY(var(--shift)) perspective(var(--persp)) rotateX(var(--tilt));
 
   position: relative;
-  width: var(--S);
-  height: var(--S);
+  width: var(--SW);
+  height: var(--SH);
   flex: 0 0 auto;
   margin: auto;                                /* centred in the board both ways */
   border-radius: calc(var(--dw) * 0.9);
@@ -674,34 +710,54 @@ body.claiming .mine .hint { display: none; }
     linear-gradient(160deg, rgba(0, 0, 0, 0.16), rgba(0, 0, 0, 0.3));
   /* the rim is drawn inside the box on purpose: a real border would shrink the
      content box by 2px, and the bands are positioned and spun about a centre
-     computed from --S — 1px of inset puts all four of them out of true */
+     computed from the box — 1px of inset puts all four of them out of true */
   box-shadow: inset 0 0 0 1px rgba(203, 156, 62, 0.18);
 }
-/* the inked square a mahjong table has around the ponds */
+/* the inked rectangle a mahjong table has around the ponds: half a strip
+   outboard of where the ponds end, on each axis's own band depth */
 .arena::before {
   content: "";
   position: absolute;
-  inset: calc(var(--S) / 2 - var(--apo) + var(--blk) - var(--bedge) * 0.5);
+  inset: calc(var(--nblk) - var(--bedge) * 0.5) calc(var(--sblk) - var(--bedge) * 0.5);
   border: 1px solid rgba(203, 156, 62, 0.1);
   border-radius: var(--inkr, calc(var(--dw) * 0.5));
   pointer-events: none;
 }
 
 /* A pentagon has no corners worth squaring off, so past four seats the felt is
-   drawn round — which is also what a table that seats five actually looks like. */
-.arena.poly { border-radius: 50%; --inkr: 50%; }
+   drawn round — which is also what a table that seats five actually looks like.
+   It is regular, too, so both axes go back to being the one side length: there
+   is no rectangle to be had out of a shape whose sides all have to match. */
+.arena.poly {
+  --SW: calc(var(--side) * var(--boxf));
+  --SH: var(--SW);
+  border-radius: 50%;
+  --inkr: 50%;
+}
+.arena.poly::before {
+  inset: calc(var(--SH) / 2 - var(--apo) + var(--nblk) - var(--bedge) * 0.5);
+}
 
-/* Each band is one side of the polygon, laid along the bottom of the box; the
-   others are that same band spun about the centre by a whole turn divided by
-   the seat count. The origin is the centre expressed in the band's own
-   coordinates, which is why it reads as the apothem up from the band's bottom.
-   At four seats the apothem is half the side and this is the square that was
-   here before, to the pixel. */
+/* Each band is one side of the table, laid along the bottom of the box and then
+   spun about the middle by its own seat's angle. Three numbers describe it: how
+   long it is, how deep, and how far the middle sits from its outer edge — that
+   last is the apothem, and it is what the origin below reads as. Written that
+   way one rule draws every band of every table: the near and far seats take the
+   defaults here, the two side seats hand it the other pond's numbers inline (see
+   band() in app.js), and a polygon overrides both with its one side length.
+
+   At four equal ponds --SW and --SH agree, the apothem is half the side, and
+   this is the square that was here before, to the pixel. */
 .band {
+  --len: var(--SW);                            /* along the table's edge */
+  --blk: var(--nblk);                          /* ... and inward from it */
+  --apo: calc(var(--SH) / 2);                  /* outer edge to the middle */
+  --ring: var(--nring);                        /* this seat's pond */
+  --pondh: calc(var(--nrows) * (var(--dh) + var(--gap)));
   position: absolute;
-  left: calc((var(--S) - var(--side)) / 2);
-  top: calc(var(--S) / 2 + var(--apo) - var(--blk));
-  width: var(--side);
+  left: calc((var(--SW) - var(--len)) / 2);
+  top: calc(var(--SH) / 2 + var(--apo) - var(--blk));
+  width: var(--len);
   height: var(--blk);
   transform-origin: 50% calc(var(--blk) - var(--apo));
   transform: rotate(var(--rot, 0deg));
@@ -709,6 +765,13 @@ body.claiming .mine .hint { display: none; }
   flex-direction: column;
   align-items: center;
   justify-content: space-between;
+}
+/* A regular polygon has one side length and one apothem, and every seat takes
+   them — so the side bands' inline overrides are never written past four seats,
+   and these are free to be the whole story. */
+.arena.poly .band {
+  --len: var(--side);
+  --apo: calc(var(--side) * var(--apof));
 }
 /* --rot is set inline from the seat's index: a whole turn divided by the seat
    count, counter-clockwise, so the seat after yours lands on your right. At
@@ -764,10 +827,11 @@ body.claiming .mine .hint { display: none; }
   z-index: 4;
 }
 .plates .nplate { position: absolute; }
-/* the fit publishes the table's own box, so the plates can sit against its
-   edges rather than the board's, and clamp to the board when they run out */
-.plates .e-bottom { left: 50%; top: min(calc(50% + var(--tblh, 0px) / 2 + 3px), calc(100% - 44px)); transform: translateX(-50%); }
-.plates .e-top { left: 50%; top: max(calc(50% - var(--tblh, 0px) / 2 - 47px), 2px); transform: translateX(-50%); }
+/* The fit publishes the table's own box — and how big a plate measures — so the
+   plates can sit against the table's edges rather than the board's, and clamp to
+   the board when they run out. */
+.plates .e-bottom { left: 50%; top: min(calc(50% + var(--tblh, 0px) / 2 + 3px), calc(100% - var(--ph, 44px))); transform: translateX(-50%); }
+.plates .e-top { left: 50%; top: max(calc(50% - var(--tblh, 0px) / 2 - var(--ph, 44px) - 3px), 2px); transform: translateX(-50%); }
 .plates .e-left { top: 50%; left: max(calc(50% - var(--tblw, 0px) / 2 - 3px - var(--pw, 186px)), 2px); transform: translateY(-50%); }
 .plates .e-right { top: 50%; left: min(calc(50% + var(--tblw, 0px) / 2 + 3px), calc(100% - var(--pw, 186px) - 2px)); transform: translateY(-50%); }
 /* Past four seats there is no named edge for a name to hang off, so each one
@@ -781,8 +845,8 @@ body.claiming .mine .hint { display: none; }
      table is fitted to the board, so on the axis the fit was tight against there
      is no room outside it for a name: an upright board sent 南 and 中 55px off
      the side, a wide one hung 東 34px below the screen with its name cut. */
-  --phw: min(15%, 84px);
-  --pht: 34px;
+  --phw: min(15%, calc(var(--pw, 168px) / 2));
+  --pht: calc(var(--ph, 68px) / 2);
   max-width: min(30%, 168px);
   left: clamp(var(--phw),
               calc(50% + var(--sx, 0) * (var(--tblw, 240px) / 2 + 12px)),
@@ -824,17 +888,16 @@ body.claiming .mine .hint { display: none; }
 }
 .plates:not(.hroom):not(.poly) .e-left {
   left: 4px;
-  top: max(calc(50% - var(--tblh, 0px) / 2 - 47px), 2px);
+  top: max(calc(50% - var(--tblh, 0px) / 2 - var(--ph, 44px) - 3px), 2px);
   transform: none;
 }
-/* 72px, not the 44 the near seat's edge clamps by: this one is top-anchored, so
-   the clamp has to clear a whole plate, and a plate is taller on the propped-up
-   laptop than on a phone. Over-reserving only lowers it inside its own gutter;
-   under-reserving hangs it off the bottom of the screen. */
+/* Top-anchored, so this clamp has to clear a whole plate — which is why the fit
+   measures one rather than reserving a round number that was too small on a
+   propped-up laptop and too large on a phone. */
 .plates:not(.hroom):not(.poly) .e-right {
   left: auto;
   right: 4px;
-  top: min(calc(50% + var(--tblh, 0px) / 2 + 3px), calc(100% - 72px));
+  top: min(calc(50% + var(--tblh, 0px) / 2 + 3px), calc(100% - var(--ph, 44px) - 4px));
   transform: none;
 }
 
@@ -880,6 +943,24 @@ body.claiming .mine .hint { display: none; }
   animation: turnGlow 2.2s ease-in-out infinite;
 }
 .nplate.me { box-shadow: 0 6px 16px rgba(0, 0, 0, 0.5), inset 0 0 0 1px rgba(203, 156, 62, 0.45); }
+
+/* On a phone the table is fitted to fill the board, so there is no gutter left
+   for the names to stand in and they float over the felt's corners instead —
+   which is where each band's own wall and melds are not, since those are centred
+   on their edge. Keep a plate small enough that a corner is all it takes. */
+@media (max-width: 700px) {
+  .plates .nplate {
+    max-width: min(42%, 152px);
+    gap: 4px;
+    padding: 2px 7px 2px 2px;
+    background: rgba(3, 20, 17, 0.9);
+  }
+  .plates .nplate .face { width: 22px; }
+  .plates .nplate .wind { font-size: 12px; }
+  .plates .nplate .nm { font-size: 11px; }
+  .plates .nplate .sc { font-size: 11px; }
+  .plates .nplate .chip { font-size: 8px; padding: 0 3px; }
+}
 
 /* In the flat table the plate is part of the band, so it scales with the tiles
    and the layout reserves its room. The side seats' turn on end — a pill as long
