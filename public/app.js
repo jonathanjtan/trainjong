@@ -1116,6 +1116,54 @@ function tickClock() {
 
 // -------------------------------------------------------------------- sheets
 
+/* A sheet is written as one string, and used to be handed straight to
+   innerHTML — which threw away every node and built it again, on every render.
+   Mostly that is invisible. With a folder of faces in the picker it is 240
+   images rebuilt to move one highlight, and it takes the picker's scroll
+   position with it: you scroll down, find a face, tap it, and are returned to
+   the top with no way to see what you chose.
+
+   Almost every render changes a class or a word rather than the shape of the
+   thing, so walk the two trees together and touch only what differs. Nodes that
+   are still right stay exactly where they are, and so does everything the DOM
+   was holding for us — scroll offsets, focus, decoded images. */
+function patchNode(a, b) {
+  if (a.nodeType !== b.nodeType || a.nodeName !== b.nodeName) { a.replaceWith(b); return; }
+  if (a.nodeType !== Node.ELEMENT_NODE) {
+    if (a.nodeValue !== b.nodeValue) a.nodeValue = b.nodeValue;
+    return;
+  }
+  for (const at of [...a.attributes]) if (!b.hasAttribute(at.name)) a.removeAttribute(at.name);
+  for (const at of [...b.attributes]) if (a.getAttribute(at.name) !== at.value) a.setAttribute(at.name, at.value);
+  // whatever someone is in the middle of typing is theirs, not ours
+  if (a.tagName === 'INPUT') {
+    if (document.activeElement !== a && b.hasAttribute('value') && a.value !== b.getAttribute('value')) {
+      a.value = b.getAttribute('value');
+    }
+    return;
+  }
+  const an = [...a.childNodes], bn = [...b.childNodes];
+  for (let i = 0; i < Math.max(an.length, bn.length); i++) {
+    if (an[i] && bn[i]) patchNode(an[i], bn[i]);
+    else if (bn[i]) a.appendChild(bn[i]);
+    else an[i].remove();
+  }
+}
+
+/** put `html` on `el`, disturbing as little of what is already there as possible */
+function setSheet(el, html) {
+  if (!html || !el.firstChild) { el.innerHTML = html; return; }
+  const next = document.createElement('div');
+  next.innerHTML = html;
+  const a = [...el.childNodes], b = [...next.childNodes];
+  for (let i = 0; i < Math.max(a.length, b.length); i++) {
+    if (a[i] && b[i]) patchNode(a[i], b[i]);
+    else if (b[i]) el.appendChild(b[i]);
+    else a[i].remove();
+  }
+}
+
+
 let sheetDeferred = false;
 function renderSheet(g) {
   const el = $('sheet');
@@ -1129,14 +1177,14 @@ function renderSheet(g) {
   // the match ending deserves its own screen — the last hand's scorecard is
   // still reachable behind it rather than being the whole ceremony
   if (g && g.phase === 'match-over' && g.summary && !showLastHand) {
-    el.innerHTML = matchSheet(g);
+    setSheet(el, matchSheet(g));
     return;
   }
   if (g && (g.phase === 'hand-over' || g.phase === 'match-over') && g.result) {
-    el.innerHTML = resultSheet(g);
+    setSheet(el, resultSheet(g));
     return;
   }
-  if (showLobby) { el.innerHTML = lobbySheet(); return; }
+  if (showLobby) { setSheet(el, lobbySheet()); return; }
   el.innerHTML = '';
 }
 
@@ -1378,7 +1426,7 @@ function renderGuide() {
         data-a="gvar" data-id="${x.id}">${esc(x.zh)}</button>`).join('')}</div>`
     : '';
 
-  $('guide').innerHTML = `<div class="sheet-inner">
+  setSheet($('guide'), `<div class="sheet-inner">
     <div class="ghead">
       <div><div class="title-mark">麻雀</div><h1>How to play</h1></div>
       <button class="mini" data-a="closeguide">✕</button>
@@ -1387,7 +1435,7 @@ function renderGuide() {
     ${picker}
     ${body}
     <div class="actions" style="justify-content:flex-start"><button class="primary" data-a="closeguide">Back to the game</button></div>
-  </div>`;
+  </div>`);
 }
 
 // ---------------------------------------------------------------- interaction
