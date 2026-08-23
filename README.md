@@ -104,9 +104,12 @@ travel router:
   usually no room and the names float over the corners — which is where each
   band's wall and melds are not, since those sit centred on their own edge.
   Twelve faces come drawn in — inline SVG, like the tiles, so there is nothing
-  to download — and you pick one in the lobby beside your name.
-- **Faces of your own**: drop images in `public/faces` and they join the picker,
-  cropped to the same circle. The list is read off the disk, so a new file shows
+  to download — and you pick one in the lobby beside your name. A table that has
+  brought its own faces uses nothing else: the drawn ones are what an empty
+  `public/faces` falls back to, not a set to sit alongside yours.
+- **Faces of your own**: drop images in `public/faces` and they become the
+  picker, cropped to the same circle — the drawn ones step aside, and seats
+  nobody has chosen for (bots included) take one of yours. The list is read off the disk, so a new file shows
   up within a couple of seconds. That directory is gitignored — what you put on
   your own table stays on your own table.
 - **It takes the shape of the screen.** A real table is square, but a phone is

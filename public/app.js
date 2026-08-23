@@ -569,11 +569,28 @@ const EDGE = { bottom: 'e-bottom', right: 'e-right', top: 'e-top', left: 'e-left
    that is not there cannot be conjured up from the wire. */
 const faceSrc = (name) => `/faces/${name.split('/').map(encodeURIComponent).join('/')}`;
 
+/* A table that brought its own faces uses nothing else: the drawn ones are the
+   fallback for a table that has none, not a default to sit alongside them. That
+   is also why they are still here — a fresh clone has an empty faces folder, and
+   twelve faces that cost nothing to download are better than twelve blanks.
+   The seat with nobody's choice on it still needs a face, so it gets one off the
+   folder by the same deterministic reckoning the drawn ones used. */
+const ownFaces = () => sync?.room?.faces || [];
+
+function faceFor(who, chosen) {
+  const mine = ownFaces();
+  if (chosen?.startsWith('file:') && mine.includes(chosen.slice(5))) return chosen.slice(5);
+  if (!mine.length) return null;
+  const n = typeof who === 'number' ? who
+    : [...String(who ?? '')].reduce((a, c) => a + c.charCodeAt(0), 0);
+  return mine[Math.abs(n) % mine.length];
+}
+
 function faceEl(who, chosen) {
-  if (chosen?.startsWith('file:') && sync.room.faces?.includes(chosen.slice(5))) {
-    return `<img class="av-img" src="${faceSrc(chosen.slice(5))}" alt="" loading="lazy">`;
-  }
-  return avatarSVG(avatarFor(who, chosen));
+  const f = faceFor(who, chosen);
+  return f
+    ? `<img class="av-img" src="${faceSrc(f)}" alt="" loading="lazy">`
+    : avatarSVG(avatarFor(who, chosen));
 }
 
 function plate(g, seat, k, withScore = false, n = 4) {
@@ -1246,11 +1263,12 @@ function lobbySheet() {
     <div class="seatpick">${seatBtns}</div>
 
     <div class="field"><span class="eyebrow">your face</span>
-      <div class="avpick">${AVATARS.map((a) => `<button class="av ${myAvatar === a.id ? 'on' : ''}"
-        data-a="avatar" data-id="${a.id}" aria-label="${a.id}">${avatarSVG(a.id)}</button>`).join('')}
-        ${(r.faces || []).map((f) => `<button class="av ${myAvatar === `file:${f}` ? 'on' : ''}"
-          data-a="avatar" data-id="file:${esc(f)}" title="${esc(f)}" aria-label="${esc(f)}">
-          <img class="av-img" src="${faceSrc(f)}" alt="" loading="lazy"></button>`).join('')}</div>
+      <div class="avpick">${(r.faces || []).length
+        ? (r.faces || []).map((f) => `<button class="av ${myAvatar === `file:${f}` ? 'on' : ''}"
+            data-a="avatar" data-id="file:${esc(f)}" title="${esc(f)}" aria-label="${esc(f)}">
+            <img class="av-img" src="${faceSrc(f)}" alt="" loading="lazy"></button>`).join('')
+        : AVATARS.map((a) => `<button class="av ${myAvatar === a.id ? 'on' : ''}"
+            data-a="avatar" data-id="${a.id}" aria-label="${a.id}">${avatarSVG(a.id)}</button>`).join('')}</div>
       ${(r.faces || []).length ? '' : '<span class="hint">drop images (or a folder of them) in public/faces to add your own</span>'}</div>
 
     <h2>Ruleset</h2>
