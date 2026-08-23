@@ -118,8 +118,11 @@ export const NAMES = (() => {
   return a;
 })();
 
-export function tileEl(id, { size = 'md', back = false, dim = false, ring = false, turned = false, cls: extra = '' } = {}) {
+export function tileEl(id, { size = 'md', back = false, dim = false, ring = false, turned = false, slot = '', cls: extra = '' } = {}) {
   const cls = ['tile', `t-${size}`, dim ? 'dim' : '', ring ? 'ring' : '', turned ? 'turned' : '', extra]
     .filter(Boolean).join(' ');
-  return `<span class="${cls}" data-tile="${id}" title="${back ? '' : NAMES[id] || ''}">${back ? tileBackSVG() : tileSVG(id)}</span>`;
+  // which end of the meld a claimed tile lies at — l/m/r — so a table that does
+  // not turn its bands can turn the tile towards the seat it came from instead
+  const at = slot ? ` data-slot="${slot}"` : '';
+  return `<span class="${cls}" data-tile="${id}"${at} title="${back ? '' : NAMES[id] || ''}">${back ? tileBackSVG() : tileSVG(id)}</span>`;
 }

@@ -408,6 +408,13 @@ function renderTable(g) {
 function flatTable(g, at) {
   const dirOf = {};
   for (const [dir, seat] of Object.entries(at)) dirOf[seat] = dir;
+  // the fit reserves each pond its rows up front so the table does not grow —
+  // and shrink every tile on itself — with every discard
+  const near = [at.bottom, at.top], side = [at.left, at.right];
+  pondShapeFor = (cols, scols) => ({
+    nrows: rowsFor(g.river, near, cols),
+    srows: rowsFor(g.river, side, scols),
+  });
   const arrow = { top: '▲', bottom: '▼', left: '◀', right: '▶' }[dirOf[g.turn]] || '';
 
   return `<div class="flat">
@@ -583,7 +590,10 @@ function faceFor(who, chosen) {
   if (!mine.length) return null;
   const n = typeof who === 'number' ? who
     : [...String(who ?? '')].reduce((a, c) => a + c.charCodeAt(0), 0);
-  return mine[Math.abs(n) % mine.length];
+  // spread them out: a folder of faces is usually sorted by character, so
+  // neighbouring seats taking neighbouring files means four near-identical
+  // portraits round one table. A stride puts them somewhere else in the folder.
+  return mine[Math.abs(n * 2654435761) % mine.length];
 }
 
 function faceEl(who, chosen) {
@@ -907,8 +917,11 @@ function fitFlatTable() {
   if (availW <= 0 || availH <= 0) return;
 
   const shape = ([cols, scols, sideRow]) => {
+    const { nrows, srows } = pondShapeFor(cols, scols);
     flat.style.setProperty('--cols', cols);
     flat.style.setProperty('--scols', scols);
+    flat.style.setProperty('--nrows', nrows);
+    flat.style.setProperty('--srows', srows);
     flat.classList.toggle('side-row', !!sideRow);
   };
   const fits = (dw) => {
@@ -924,7 +937,7 @@ function fitFlatTable() {
     shape(s);
     // half a pixel of hysteresis: a shape has to actually be better to take the
     // table off the one already in front of the players
-    let lo = Math.max(MIN_DW, best + 0.5);
+    let lo = Math.max(MIN_DW, best * (String(s) === String(flatShape) ? 1 : SHAPE_HOLD));
     if (!fits(lo)) continue;
     let hi = MAX_DW;
     if (fits(hi)) { best = hi; winner = s; break; }   // all the room in the world
@@ -987,13 +1000,20 @@ function meldHTML(m, seat, compact = false, extra = '') {
     if (i >= 0) order = [...rest.slice(0, i), ...rest.slice(i + 1)];
     order = [...order.slice(0, slot), m.claimed ?? m.tile, ...order.slice(slot)];
   }
+  // which end it lies at is which seat it came from: outer left for the player
+  // on your left, middle for the one across, outer right for the one on your
+  // right. The arena reads that off the position alone, because its bands are
+  // turned to their seats; the flat table turns the tile itself, and needs
+  // telling which of the three this is.
+  const side = slot <= 0 ? 'l' : slot >= ts.length - 1 ? 'r' : 'm';
   const inner = order.map((t, i) => {
     if (i === slot && added) {
-      return `<span class="kstack">${tileEl(t, { size, turned: true }).repeat(2)}</span>`;
+      return `<span class="kstack">${tileEl(t, { size, turned: true, slot: side }).repeat(2)}</span>`;
     }
     return tileEl(t, {
       size,
       turned: i === slot,
+      slot: i === slot ? side : '',
       back: m.type === 'kong' && !m.open && (i === 0 || i === 3),
     });
   }).join('');
