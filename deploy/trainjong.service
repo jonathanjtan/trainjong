@@ -1,0 +1,44 @@
+[Unit]
+Description=trainjong — mahjong table
+After=network.target
+
+[Service]
+Type=simple
+User=trainjong
+Group=trainjong
+WorkingDirectory=/srv/trainjong
+Environment=HOST=127.0.0.1
+Environment=PORT=8080
+ExecStart=/usr/bin/node server.js
+Restart=always
+RestartSec=2
+
+# It shares a box with somebody's work, so it is allowed to see almost nothing.
+# The app writes no files at all, which is what makes this affordable: the whole
+# filesystem can be read-only to it and there is nothing to carve back out.
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectProc=invisible
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+LockPersonality=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+CapabilityBoundingSet=
+AmbientCapabilities=
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+MemoryMax=512M
+TasksMax=64
+
+[Install]
+WantedBy=multi-user.target

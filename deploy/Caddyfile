@@ -1,0 +1,21 @@
+# trainjong's front door.
+#
+# Plain HTTP, on loopback only, on purpose: Tailscale terminates TLS in front of
+# this and nothing outside the box can reach port 8081 anyway. Caddy is here for
+# exactly one job — to ask for the password before anything reaches the game.
+#
+# Site-level, so it covers /ws as well as the page. A gate on the HTML alone
+# would leave the game itself open to anyone who spoke the protocol.
+# Any host, because Tailscale forwards the request with its own name on it and a
+# site keyed to 127.0.0.1 matched nothing — Caddy answered an empty 200 and the
+# password never came into it. `bind` is what keeps this to loopback; the site
+# address is only about which names it answers to.
+:8081 {
+	bind 127.0.0.1
+
+	basic_auth {
+		table REPLACE_WITH_OUTPUT_OF__caddy_hash-password
+	}
+	reverse_proxy 127.0.0.1:8080
+	encode zstd gzip
+}
