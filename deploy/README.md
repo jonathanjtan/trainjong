@@ -35,6 +35,20 @@ work.
     sudo systemctl enable --now trainjong && sudo systemctl reload caddy
     sudo tailscale funnel --bg --https=443 http://127.0.0.1:8081
 
+## One thing that will cost you an afternoon if you hit it
+
+Funnel needs Tailscale **1.102.3 or newer**. On 1.102.1 the control plane sends
+a perfectly correct ingress grant — the right capability, the right relays, the
+right destination — and tailscaled rejects the relays anyway:
+
+    peerapi: ingress: denied; no ingress cap from [fd7a:115c:a1e0::5a01:aea3]
+
+Nothing on the node fixes it. Re-declaring the funnel, re-announcing Hostinfo,
+restarting tailscaled, a full `tailscale up`, `tailscale serve reset`, another
+port — all refused identically, with the grant plainly visible in
+`tailscale debug netmap`. The upgrade is the fix. If ingress is being denied,
+check the version before anything else.
+
 `git archive` rather than a copy of the working tree on purpose: `public/faces`
 is gitignored, so nobody's personal pictures travel to a public-facing box.
 
